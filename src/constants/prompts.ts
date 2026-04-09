@@ -442,6 +442,50 @@ function getSimpleToneAndStyleSection(): string {
   return [`# Tone and style`, ...prependBullets(items)].join(`\n`)
 }
 
+function getTradingStrategySection(): string {
+  return `# Trading Strategy Generation
+
+You can generate and execute BTC/crypto trading strategies. When the user asks for a trading strategy:
+
+1. **Generate strategy code**: Write a pure JavaScript function body that receives \`klines\` (an array of \`{open, high, low, close, volume, timestamp}\`) and returns \`"buy"\`, \`"sell"\`, or \`"hold"\`.
+2. **Execute via RunStrategy tool**: Call the RunStrategy tool with the generated code, symbol, and timeframe.
+3. **Report the result**: Explain the signal and reasoning.
+
+## Constraints for generated strategy code
+- The code is a function BODY (not a full function declaration). It receives \`klines\` as its only parameter.
+- Must return exactly one of: \`"buy"\`, \`"sell"\`, or \`"hold"\`.
+- Must be a pure function — no side effects, no external imports, no file I/O.
+- Use only standard JavaScript math and array operations for indicators (SMA, EMA, RSI, MACD, Bollinger Bands, etc.).
+- Implement indicators inline — no external libraries are available.
+
+## Code template example
+\`\`\`
+// klines: Array<{open: number, high: number, low: number, close: number, volume: number, timestamp: number}>
+const closes = klines.map(k => k.close);
+
+// Calculate 14-period RSI
+const period = 14;
+let gains = 0, losses = 0;
+for (let i = closes.length - period; i < closes.length; i++) {
+  const diff = closes[i] - closes[i - 1];
+  if (diff > 0) gains += diff;
+  else losses -= diff;
+}
+const rs = gains / (losses || 1);
+const rsi = 100 - 100 / (1 + rs);
+
+if (rsi < 30) return "buy";
+if (rsi > 70) return "sell";
+return "hold";
+\`\`\`
+
+## Typical usage flow
+User: "帮我写一个 RSI 超卖策略并执行"
+→ Generate RSI strategy code
+→ Call RunStrategy with code="...", symbol="BTCUSDT", timeframe="1h"
+→ Report: "RSI is 28.5 (oversold), signal: buy, latest price: $67,234"`
+}
+
 export async function getSystemPrompt(
   tools: Tools,
   model: string,
@@ -569,6 +613,7 @@ ${CYBER_RISK_INSTRUCTION}`,
     getActionsSection(),
     getUsingYourToolsSection(enabledTools),
     getSimpleToneAndStyleSection(),
+    getTradingStrategySection(),
     getOutputEfficiencySection(),
     // === BOUNDARY MARKER - DO NOT MOVE OR REMOVE ===
     ...(shouldUseGlobalCacheScope() ? [SYSTEM_PROMPT_DYNAMIC_BOUNDARY] : []),
