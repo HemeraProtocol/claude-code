@@ -51,8 +51,7 @@
     "health": "bun run scripts/health-check.ts",
     "postinstall": "node scripts/postinstall.cjs",
     "docs:dev": "npx mintlify dev",
-    "rcs": "bun run scripts/rcs.ts",
-    "api": "bun run scripts/api.ts"
+    "rcs": "bun run scripts/rcs.ts"
   },
   "dependencies": {},
   "devDependencies": {
