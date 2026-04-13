@@ -1,12 +1,14 @@
 #!/usr/bin/env bun
 /**
  * Fetches Polymarket market data + underlying asset klines.
- * Outputs a single-line JSON ctx (no helpers, no signal) to stdout.
+ * Writes ctx JSON to /tmp/polymarket-ctx-<slug>-<pid>-<rand>.json and prints
+ * {"ctxPath": "..."} to stdout. Downstream callers (run_js) read ctx via ctxPath.
  *
  * Usage: bun run fetch.ts --slug <slug> --underlying <BTC|ETH|SOL|...>
  */
 
 import { parseArgs } from 'util'
+import { randomBytes } from 'node:crypto'
 
 // ─── CLI args ────────────────────────────────────────────────────────────────
 
@@ -26,6 +28,11 @@ const klineLimit = Math.max(1, Math.min(1500, Number(values.limit ?? '200') || 2
 
 if (!slug) {
   process.stderr.write('Usage: fetch.ts --slug <slug> [--underlying <BTC|ETH|SOL|...>]\n')
+  process.exit(1)
+}
+
+if (!/^[a-z0-9-]+$/i.test(slug)) {
+  process.stderr.write(`Invalid slug: must match /^[a-z0-9-]+$/i\n`)
   process.exit(1)
 }
 
@@ -146,7 +153,9 @@ const BARS_PER_YEAR: Record<KlineInterval, number> = {
   '1d':  365,
 }
 
-async function realizedVolByWindow(symbol: string): Promise<Record<string, number>> {
+async function realizedVolByWindow(
+  symbol: string,
+): Promise<{ vols: Record<string, number>; warnings: string[] }> {
   const windows: Array<{ label: string; interval: KlineInterval; limit: number }> = [
     { label: '15m', interval: '1m',  limit: 15 },
     { label: '1h',  interval: '5m',  limit: 12 },
@@ -154,25 +163,32 @@ async function realizedVolByWindow(symbol: string): Promise<Record<string, numbe
     { label: '7d',  interval: '1h',  limit: 168 },
     { label: '30d', interval: '4h',  limit: 180 },
   ]
-  const result: Record<string, number> = {}
+  const vols: Record<string, number> = {}
+  const warnings: string[] = []
   await Promise.all(
     windows.map(async w => {
       try {
         const klines = await fetchBinanceKlines(symbol, w.interval, w.limit)
         const rets = logReturns(klines.map(k => k.close))
-        result[w.label] = annualizedVol(rets, BARS_PER_YEAR[w.interval])
-      } catch {
-        result[w.label] = 1
+        if (rets.length < 2) {
+          warnings.push(`realizedVol[${w.label}]: insufficient samples (${rets.length})`)
+          vols[w.label] = 1
+        } else {
+          vols[w.label] = annualizedVol(rets, BARS_PER_YEAR[w.interval])
+        }
+      } catch (err) {
+        warnings.push(`realizedVol[${w.label}]: fetch failed (${String(err)})`)
+        vols[w.label] = 1
       }
     }),
   )
-  return result
+  return { vols, warnings }
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
-  const [event, klines1h, vols] = await Promise.all([
+  const [event, klines1h, volResult] = await Promise.all([
     fetchGammaEvent(slug!),
     fetchBinanceKlines(underlying, '1h', klineLimit),
     realizedVolByWindow(underlying),
@@ -197,12 +213,17 @@ async function main(): Promise<void> {
     bookCursor += tokenIds.length
 
     const strikeMatch = m.question.match(/\$([0-9,]+(?:\.[0-9]+)?)/i)
-    const strike = strikeMatch ? Number(strikeMatch[1]!.replace(/,/g, '')) : null
+    const isDirectional = /up or down/i.test(m.question)
+    const kind: 'absolute' | 'directional' = isDirectional ? 'directional' : 'absolute'
+    const strike = kind === 'absolute' && strikeMatch
+      ? Number(strikeMatch[1]!.replace(/,/g, ''))
+      : null
     const expiryTs = new Date(m.endDate).getTime()
 
     return {
       slug: m.slug,
       question: m.question,
+      kind,
       strike,
       expiryDate: m.endDate,
       expiryTs,
@@ -228,14 +249,16 @@ async function main(): Promise<void> {
       symbol: underlying,
       price: currentPrice,
       klines: klines1h,
-      realizedVol: vols,
+      realizedVol: volResult.vols,
+      realizedVolWarnings: volResult.warnings,
     },
     timing: {
       nowTs,
     },
   }
 
-  const tmpPath = `/tmp/polymarket-ctx-${slug}.json`
+  const rand = randomBytes(4).toString('hex')
+  const tmpPath = `/tmp/polymarket-ctx-${slug}-${process.pid}-${rand}.json`
   await Bun.write(tmpPath, JSON.stringify(ctx))
   process.stdout.write(JSON.stringify({ ctxPath: tmpPath }) + '\n')
 }

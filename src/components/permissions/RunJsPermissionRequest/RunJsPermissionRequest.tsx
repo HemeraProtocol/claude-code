@@ -19,6 +19,7 @@ export function RunJsPermissionRequest({
   const input = toolUseConfirm.input as {
     code?: string
     ctx?: unknown
+    ctxPath?: string
     helpersModulePath?: string
     timeoutMs?: number
   }

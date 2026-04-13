@@ -45,12 +45,14 @@ user-invocable: "true"
 ctx.markets[]                     — all markets under the event (one per price level)
   .slug           string
   .question       string          — e.g. "Will BTC be above $95,000 on Jan 1?"
-  .strike         number|null     — parsed strike price from question
+  .kind           'absolute'|'directional'
+                                  — 'directional' for "Up or Down" markets (no fixed $ strike)
+  .strike         number|null     — parsed strike price; null for directional markets
   .expiryDate     string          — ISO date
   .expiryTs       number          — epoch ms
   .hoursToExpiry  number
   .outcomes[]
-    .label        string          — "Yes" or "No"
+    .label        string          — "Yes"/"No" or "Up"/"Down"
     .price        number          — current market price (0–1)
     .bestBid      number|null
     .bestAsk      number|null
@@ -61,7 +63,7 @@ ctx.markets[]                     — all markets under the event (one per price
 
 ctx.underlying
   .symbol         string          — "BTC", "ETH", etc.
-  .price          number          — latest close price in USD
+  .price          number          — latest 1h-close price in USD
   .klines[]                       — up to 200 hourly candles (default; use --limit to adjust)
     .timestamp    number
     .open/high/low/close number
@@ -72,9 +74,10 @@ ctx.underlying
     ['24h']       number
     ['7d']        number
     ['30d']       number
+  .realizedVolWarnings  string[]  — non-empty if any vol window failed; empty = all OK
 
 ctx.timing
-  .nowTs          number          — epoch ms
+  .nowTs          number          — epoch ms (captured at fetch time)
 ```
 
 ## ctx.helpers (injected by run_js from helpers.ts)
@@ -84,19 +87,24 @@ ctx.timing
 - `normCDF(x)` — standard normal CDF
 - `mean(arr)`, `stdev(arr)`, `quantile(arr, p)`
 - `sma(arr, w)` — simple moving average (last w elements)
-- `ema(arr, w)` — exponential moving average
+- `emaArray(arr, w)` — full EMA series (same length as input). Use `.at(-1)` for latest, slice for crossover/MACD.
+- `rsi(closes, period?)` — Wilder-smoothed RSI of latest bar. Default period 14. Returns 50 if not enough bars.
 - `logReturns(prices)` — log return array
 
 ### Strategy building blocks
 
 - `bsProbUp(ctx, {sigmaWindow?, sigmaOverride?})` → number
-  Black-Scholes prob of underlying ending above strike at expiry.
+  Black-Scholes prob of underlying ending above strike at expiry. Throws if the required vol window has a fetch warning (check `ctx.underlying.realizedVolWarnings`).
+- `directionalProbUp(ctx, {sigmaWindow?})` → number
+  For "Up or Down" markets: returns N(-0.5·σ·√T) ≈ 0.5. Model cannot provide edge here; edge must come from orderbook imbalance.
 - `empiricalProbUp(ctx, {lookback?})` → number
   Fraction of recent kline bars that closed up.
 - `yesSide(ctx)` → `{index, label, outcomePrice, bestBid, bestAsk}`
+  Recognises "yes/up/above/over/higher/>" labels. Throws on unknown labels.
 - `noSide(ctx)` → same shape
-- `decideEdge(pHat, ctx, {threshold?})` → `{side, pHat, marketPrice, edge, reason}`
-  Returns `side: 'yes'|'no'|'hold'`. Threshold default 0.05.
+- `effectiveEdge(pHat, ctx, {threshold?})` → `{side, pHat, marketPrice, edge, reason}`
+  Computes edge against `bestAsk` (real cost after crossing the spread). Use this for live signals.
+  Threshold default 0.05.
 
 ## Reference Strategy (BS + Empirical Blend, all markets)
 
@@ -111,18 +119,32 @@ return ctx.markets.map((market) => {
 		underlying: ctx.underlying,
 		timing: { ...ctx.timing, expiryTs: market.expiryTs },
 	};
-	const pBS = market.strike ? ctx.helpers.bsProbUp(mCtx) : null;
-	const pEmp = ctx.helpers.empiricalProbUp(mCtx);
-	const pHat =
-		pBS === null
+
+	let pHat;
+	if (market.kind === "directional") {
+		// Short-window "Up or Down" market: model gives ~0.5, BS/empirical cannot provide edge.
+		pHat = ctx.helpers.directionalProbUp(mCtx);
+	} else if (market.strike) {
+		let pBS;
+		try {
+			pBS = ctx.helpers.bsProbUp(mCtx);
+		} catch {
+			// vol data unavailable — fall back to empirical only
+			pBS = null;
+		}
+		const pEmp = ctx.helpers.empiricalProbUp(mCtx);
+		pHat = pBS === null
 			? pEmp
-			: useEmp
-				? 0.3 * pBS + 0.7 * pEmp
-				: 0.7 * pBS + 0.3 * pEmp;
+			: useEmp ? 0.3 * pBS + 0.7 * pEmp : 0.7 * pBS + 0.3 * pEmp;
+	} else {
+		pHat = ctx.helpers.empiricalProbUp(mCtx);
+	}
+
 	return {
 		question: market.question,
 		strike: market.strike,
-		...ctx.helpers.decideEdge(pHat, mCtx, { threshold: 0.05 }),
+		kind: market.kind,
+		...ctx.helpers.effectiveEdge(pHat, mCtx, { threshold: 0.05 }),
 	};
 });
 ```
@@ -133,10 +155,12 @@ For MACD / RSI / momentum approaches, iterate over `ctx.markets`:
 
 ```js
 const closes = ctx.underlying.klines.map((k) => k.close);
-const fast = ctx.helpers.ema(closes, 12);
-const slow = ctx.helpers.ema(closes, 26);
-const macd = fast - slow;
-const pHat = macd > 0 ? 0.6 : 0.4;
+const ema12 = ctx.helpers.emaArray(closes, 12);
+const ema26 = ctx.helpers.emaArray(closes, 26);
+const macd = ema12.map((v, i) => v - ema26[i]);
+const signal = ctx.helpers.emaArray(macd, 9);
+const histLast = macd.at(-1) - signal.at(-1);
+const pHat = histLast > 0 ? 0.58 : 0.42;
 
 return ctx.markets.map((market) => {
 	const mCtx = {
@@ -144,10 +168,7 @@ return ctx.markets.map((market) => {
 		underlying: ctx.underlying,
 		timing: { ...ctx.timing, expiryTs: market.expiryTs },
 	};
-	return {
-		question: market.question,
-		...ctx.helpers.decideEdge(pHat, mCtx, { threshold: 0.05 }),
-	};
+	return { question: market.question, ...ctx.helpers.effectiveEdge(pHat, mCtx, { threshold: 0.05 }) };
 });
 ```
 
@@ -157,5 +178,7 @@ Always return an array (one entry per market) so the report covers all price lev
 
 - `CLAUDE_SKILL_DIR` is the absolute path to this skill's directory, available in bash and as an injectable variable.
 - Each market has its own `hoursToExpiry`; skip (mark closed) those where it is < 0.
-- If `market.strike` is null, BS model cannot run — fall back to `empiricalProbUp`.
+- `market.kind === 'directional'` means the question is "Up or Down" with no fixed $ strike. `directionalProbUp` returns ≈0.5; these markets will output `hold` unless orderbook imbalance is added.
+- If `market.strike` is null (non-directional), BS model cannot run — fall back to `empiricalProbUp`.
+- `ctx.underlying.realizedVolWarnings` is an array of strings. Non-empty = some vol windows had fetch failures (fallback σ=1 was used). `bsProbUp` throws when the needed window is listed; catch and fall back to empirical or mark hold.
 - Do NOT hardcode strategy logic in bash heredocs. Always use the `run_js` tool.

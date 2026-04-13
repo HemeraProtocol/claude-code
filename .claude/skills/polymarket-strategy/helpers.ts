@@ -40,12 +40,35 @@ function sma(a: number[], w: number): number {
   return mean(slice)
 }
 
-function ema(a: number[], w: number): number {
-  if (a.length === 0) return 0
+function emaArray(a: number[], w: number): number[] {
+  if (a.length === 0) return []
   const k = 2 / (w + 1)
-  let e = a[0]!
-  for (let i = 1; i < a.length; i++) e = a[i]! * k + e * (1 - k)
-  return e
+  const out: number[] = [a[0]!]
+  for (let i = 1; i < a.length; i++) out.push(a[i]! * k + out[i - 1]! * (1 - k))
+  return out
+}
+
+function rsi(closes: number[], period: number = 14): number {
+  if (closes.length <= period) return 50
+  let avgGain = 0
+  let avgLoss = 0
+  for (let i = 1; i <= period; i++) {
+    const diff = closes[i]! - closes[i - 1]!
+    if (diff > 0) avgGain += diff
+    else avgLoss += -diff
+  }
+  avgGain /= period
+  avgLoss /= period
+  for (let i = period + 1; i < closes.length; i++) {
+    const diff = closes[i]! - closes[i - 1]!
+    const gain = diff > 0 ? diff : 0
+    const loss = diff < 0 ? -diff : 0
+    avgGain = (avgGain * (period - 1) + gain) / period
+    avgLoss = (avgLoss * (period - 1) + loss) / period
+  }
+  if (avgLoss === 0) return 100
+  const rs = avgGain / avgLoss
+  return 100 - 100 / (1 + rs)
 }
 
 function logReturns(prices: number[]): number[] {
@@ -56,6 +79,11 @@ function logReturns(prices: number[]): number[] {
   }
   return out
 }
+
+// ─── Label sets for outcome recognition ─────────────────────────────────────
+
+const YES_LIKE = new Set(['yes', 'up', 'above', 'over', 'higher', '>'])
+const NO_LIKE  = new Set(['no',  'down', 'below', 'under', 'lower', '<'])
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -82,11 +110,19 @@ interface DecideResult {
 /**
  * Black-Scholes probability that underlying ends ABOVE the strike at expiry.
  * Uses realized vol for the chosen window (default '1h').
+ * Throws if the required vol window was unavailable at fetch time (see ctx.underlying.realizedVolWarnings).
  */
 function bsProbUp(
   ctx: Record<string, any>,
   opts: { sigmaWindow?: VolWindow; sigmaOverride?: number } = {},
 ): number {
+  if (!opts.sigmaOverride) {
+    const window = opts.sigmaWindow ?? '1h'
+    const warnings: string[] = ctx.underlying?.realizedVolWarnings ?? []
+    if (warnings.some((w: string) => w.includes(`realizedVol[${window}]`))) {
+      throw new Error(`bsProbUp: realized vol for window '${window}' unavailable; mark market as hold`)
+    }
+  }
   const { market, underlying, timing } = ctx
   const sigma =
     opts.sigmaOverride ??
@@ -99,6 +135,28 @@ function bsProbUp(
   if (T <= 0 || K <= 0 || S <= 0) return 0.5
   const d2 = (Math.log(S / K) + (-0.5 * sigma * sigma * T)) / (sigma * Math.sqrt(T))
   return normCDF(d2)
+}
+
+/**
+ * Probability that underlying goes UP (S_end >= S_start) in a short window.
+ * For directional Polymarket markets (e.g. "BTC Up or Down 5m") where the
+ * strike is NOT a fixed dollar amount but the window-open price.
+ *
+ * Under log-normal with drift μ=0: P(S_end >= S_0) = N(-0.5·σ·√T) ≈ 0.5
+ * Edge on directional markets should come from microstructure, not BS.
+ */
+function directionalProbUp(
+  ctx: Record<string, any>,
+  opts: { sigmaWindow?: VolWindow } = {},
+): number {
+  const { underlying, timing, market } = ctx
+  const sigma =
+    underlying.realizedVol?.[opts.sigmaWindow ?? '1h'] ??
+    underlying.realizedVol?.['24h'] ??
+    1
+  const T = (market.expiryTs - timing.nowTs) / (365.25 * 24 * 3600 * 1000)
+  if (T <= 0) return 0.5
+  return normCDF(-0.5 * sigma * Math.sqrt(T))
 }
 
 /**
@@ -120,21 +178,27 @@ function empiricalProbUp(
   return ups / (slice.length - 1)
 }
 
-/** Returns the "YES" side metadata from ctx.market.outcomes */
+/** Returns the "YES" side metadata from ctx.market.outcomes.
+ *  Recognises: yes / up / above / over / higher / > */
 function yesSide(ctx: Record<string, any>): SideInfo {
   const outcomes: any[] = ctx.market.outcomes ?? []
-  const book = ctx.market.orderBook ?? []
-  const idx = outcomes.findIndex(
-    (o: any) => String(o.label ?? o.outcome ?? '').toLowerCase() === 'yes',
+  const idx = outcomes.findIndex((o: any) =>
+    YES_LIKE.has(String(o.label ?? o.outcome ?? '').toLowerCase()),
   )
-  const i = idx >= 0 ? idx : 0
-  const ob = book[i] ?? {}
+  if (idx < 0) {
+    throw new Error(
+      `yesSide: cannot identify YES outcome from labels ${JSON.stringify(
+        outcomes.map((o: any) => o.label ?? o.outcome),
+      )} — extend YES_LIKE or handle this market type`,
+    )
+  }
+  const o = outcomes[idx] ?? {}
   return {
-    index: i as 0 | 1,
-    label: outcomes[i]?.label ?? 'yes',
-    outcomePrice: outcomes[i]?.price ?? 0.5,
-    bestBid: ob.bestBid ?? null,
-    bestAsk: ob.bestAsk ?? null,
+    index: idx as 0 | 1,
+    label: o.label ?? 'yes',
+    outcomePrice: o.price ?? 0.5,
+    bestBid: o.bestBid ?? null,
+    bestAsk: o.bestAsk ?? null,
   }
 }
 
@@ -143,38 +207,44 @@ function noSide(ctx: Record<string, any>): SideInfo {
   const yes = yesSide(ctx)
   const i: 0 | 1 = yes.index === 0 ? 1 : 0
   const outcomes: any[] = ctx.market.outcomes ?? []
-  const book = ctx.market.orderBook ?? []
-  const ob = book[i] ?? {}
+  const o = outcomes[i] ?? {}
   return {
     index: i,
-    label: outcomes[i]?.label ?? 'no',
-    outcomePrice: outcomes[i]?.price ?? 0.5,
-    bestBid: ob.bestBid ?? null,
-    bestAsk: ob.bestAsk ?? null,
+    label: o.label ?? 'no',
+    outcomePrice: o.price ?? 0.5,
+    bestBid: o.bestBid ?? null,
+    bestAsk: o.bestAsk ?? null,
   }
 }
 
 /**
- * Compute edge vs market price and return a signal.
+ * Compute edge against bestAsk (real cost after crossing the spread) and return a signal.
  * threshold defaults to 0.05 (5 cent edge required to trade).
  */
-function decideEdge(
+function effectiveEdge(
   pHat: number,
   ctx: Record<string, any>,
   opts: { threshold?: number } = {},
 ): DecideResult {
   const threshold = opts.threshold ?? 0.05
   const yes = yesSide(ctx)
-  const mktPrice = yes.outcomePrice
-  const edge = pHat - mktPrice
+  const no = noSide(ctx)
+  const yesAsk = yes.bestAsk ?? yes.outcomePrice
+  const noAsk = no.bestAsk ?? no.outcomePrice
+  const yesBuyEdge = pHat - yesAsk
+  const noBuyEdge = (1 - pHat) - noAsk
 
-  if (Math.abs(edge) < threshold) {
-    return { side: 'hold', pHat, marketPrice: mktPrice, edge, reason: 'edge below threshold' }
+  if (yesBuyEdge >= noBuyEdge) {
+    if (yesBuyEdge < threshold) {
+      return { side: 'hold', pHat, marketPrice: yesAsk, edge: yesBuyEdge, reason: 'effective edge below threshold (after spread)' }
+    }
+    return { side: 'yes', pHat, marketPrice: yesAsk, edge: yesBuyEdge, reason: 'model > market (ask-adjusted)' }
+  } else {
+    if (noBuyEdge < threshold) {
+      return { side: 'hold', pHat, marketPrice: noAsk, edge: noBuyEdge, reason: 'effective edge below threshold (after spread)' }
+    }
+    return { side: 'no', pHat, marketPrice: noAsk, edge: noBuyEdge, reason: 'model < market (ask-adjusted)' }
   }
-  if (edge > 0) {
-    return { side: 'yes', pHat, marketPrice: mktPrice, edge, reason: 'model > market' }
-  }
-  return { side: 'no', pHat, marketPrice: mktPrice, edge, reason: 'model < market' }
 }
 
 // ─── Export ──────────────────────────────────────────────────────────────────
@@ -186,12 +256,14 @@ export const helpers = {
   stdev,
   quantile,
   sma,
-  ema,
+  emaArray,
+  rsi,
   logReturns,
   // strategy
   bsProbUp,
+  directionalProbUp,
   empiricalProbUp,
   yesSide,
   noSide,
-  decideEdge,
+  effectiveEdge,
 }
