@@ -22,6 +22,7 @@ user-invocable: "true"
    ```
    The script writes the full ctx to `/tmp/polymarket-ctx-<slug>.json` and prints `{"ctxPath":"/tmp/..."}` to stdout.
    Parse stdout JSON and extract `ctxPath` (do **not** use ctx inline — it is too large for tool results).
+   **Do NOT inspect the file via Bash** — the schema is documented below; proceed directly to Step 3.
 
 3. **Compose a strategy** (≤15 lines) using helpers documented below.
    - ⚠️ **FORBIDDEN in `code`**: `import`, `require`, `export` — the code runs inside `new Function()` with no module system. All helpers are already in `ctx.helpers`.
@@ -39,11 +40,13 @@ user-invocable: "true"
 ## ctx Schema
 
 ```
-ctx.market
+ctx.markets[]                     — all markets under the event (one per price level)
   .slug           string
   .question       string          — e.g. "Will BTC be above $95,000 on Jan 1?"
   .strike         number|null     — parsed strike price from question
   .expiryDate     string          — ISO date
+  .expiryTs       number          — epoch ms
+  .hoursToExpiry  number
   .outcomes[]
     .label        string          — "Yes" or "No"
     .price        number          — current market price (0–1)
@@ -51,6 +54,8 @@ ctx.market
     .bestAsk      number|null
   .volume         number
   .liquidity      number
+  .active         boolean
+  .closed         boolean
 
 ctx.underlying
   .symbol         string          — "BTC", "ETH", etc.
@@ -68,8 +73,6 @@ ctx.underlying
 
 ctx.timing
   .nowTs          number          — epoch ms
-  .expiryTs       number          — epoch ms
-  .hoursToExpiry  number
 ```
 
 ## ctx.helpers (injected by run_js from helpers.ts)
@@ -91,22 +94,25 @@ ctx.timing
 - `decideEdge(pHat, ctx, {threshold?})` → `{side, pHat, marketPrice, edge, reason}`
   Returns `side: 'yes'|'no'|'hold'`. Threshold default 0.05.
 
-## Reference Strategy (BS + Empirical Blend)
+## Reference Strategy (BS + Empirical Blend, all markets)
 
 ```js
-const pBS  = ctx.helpers.bsProbUp(ctx)
-const pEmp = ctx.helpers.empiricalProbUp(ctx)
 const v1h  = ctx.underlying.realizedVol['1h']  ?? 1
 const v30d = ctx.underlying.realizedVol['30d'] ?? 1
-const pHat = (v1h / v30d) > 1.2
-  ? 0.3*pBS + 0.7*pEmp
-  : 0.7*pBS + 0.3*pEmp
-return ctx.helpers.decideEdge(pHat, ctx, { threshold: 0.05 })
+const useEmp = (v1h / v30d) > 1.2
+
+return ctx.markets.map(market => {
+  const mCtx = { market, underlying: ctx.underlying, timing: { ...ctx.timing, expiryTs: market.expiryTs } }
+  const pBS  = market.strike ? ctx.helpers.bsProbUp(mCtx) : null
+  const pEmp = ctx.helpers.empiricalProbUp(mCtx)
+  const pHat = pBS === null ? pEmp : (useEmp ? 0.3*pBS + 0.7*pEmp : 0.7*pBS + 0.3*pEmp)
+  return { question: market.question, strike: market.strike, ...ctx.helpers.decideEdge(pHat, mCtx, { threshold: 0.05 }) }
+})
 ```
 
 ## Custom Strategies
 
-For MACD / RSI / momentum approaches, use low-level helpers:
+For MACD / RSI / momentum approaches, iterate over `ctx.markets`:
 
 ```js
 const closes = ctx.underlying.klines.map(k => k.close)
@@ -114,14 +120,18 @@ const fast = ctx.helpers.ema(closes, 12)
 const slow = ctx.helpers.ema(closes, 26)
 const macd = fast - slow
 const pHat = macd > 0 ? 0.60 : 0.40
-return ctx.helpers.decideEdge(pHat, ctx, { threshold: 0.05 })
+
+return ctx.markets.map(market => {
+  const mCtx = { market, underlying: ctx.underlying, timing: { ...ctx.timing, expiryTs: market.expiryTs } }
+  return { question: market.question, ...ctx.helpers.decideEdge(pHat, mCtx, { threshold: 0.05 }) }
+})
 ```
 
-Always terminate with `decideEdge(pHat, ctx, opts)` to get a well-formed result object.
+Always return an array (one entry per market) so the report covers all price levels.
 
 ## Notes
 
 - `CLAUDE_SKILL_DIR` is the absolute path to this skill's directory, available in bash and as an injectable variable.
-- If `hoursToExpiry < 0` the market is closed — report and stop.
-- If `strike` is null, BS model cannot run — fall back to `empiricalProbUp`.
+- Each market has its own `hoursToExpiry`; skip (mark closed) those where it is < 0.
+- If `market.strike` is null, BS model cannot run — fall back to `empiricalProbUp`.
 - Do NOT hardcode strategy logic in bash heredocs. Always use the `run_js` tool.

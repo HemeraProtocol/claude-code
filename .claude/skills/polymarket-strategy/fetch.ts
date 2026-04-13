@@ -178,41 +178,52 @@ async function main(): Promise<void> {
     realizedVolByWindow(underlying),
   ])
 
-  // Parse market metadata
-  const market = event.markets[0]!
-  const outcomes: string[] = JSON.parse(market.outcomes)
-  const prices: string[] = JSON.parse(market.outcomePrices)
-  const tokenIds: string[] = JSON.parse(market.clobTokenIds)
-
-  // Fetch orderbooks for all outcome tokens
-  const books = await Promise.all(tokenIds.map(fetchOrderBook))
-
-  const outcomesWithBook = outcomes.map((label, i) => ({
-    label,
-    price: Number(prices[i] ?? 0),
-    ...normalizeBook(books[i] ?? { bids: [], asks: [] }),
+  // Fetch orderbooks for all markets in parallel
+  const parsedMarkets = event.markets.map(m => ({
+    m,
+    outcomes: JSON.parse(m.outcomes) as string[],
+    prices: JSON.parse(m.outcomePrices) as string[],
+    tokenIds: JSON.parse(m.clobTokenIds) as string[],
   }))
 
-  // Find strike from question (e.g. "Will BTC be above $95,000")
-  const strikeMatch = event.title.match(/\$([0-9,]+(?:\.[0-9]+)?)/i)
-  const strike = strikeMatch ? Number(strikeMatch[1]!.replace(/,/g, '')) : null
+  const allBooks = await Promise.all(
+    parsedMarkets.flatMap(({ tokenIds }) => tokenIds.map(fetchOrderBook))
+  )
+
+  // Re-associate books with markets
+  let bookCursor = 0
+  const markets = parsedMarkets.map(({ m, outcomes, prices, tokenIds }) => {
+    const books = allBooks.slice(bookCursor, bookCursor + tokenIds.length)
+    bookCursor += tokenIds.length
+
+    const strikeMatch = m.question.match(/\$([0-9,]+(?:\.[0-9]+)?)/i)
+    const strike = strikeMatch ? Number(strikeMatch[1]!.replace(/,/g, '')) : null
+    const expiryTs = new Date(m.endDate).getTime()
+
+    return {
+      slug: m.slug,
+      question: m.question,
+      strike,
+      expiryDate: m.endDate,
+      expiryTs,
+      hoursToExpiry: (Date.now() - expiryTs) / -3_600_000,
+      outcomes: outcomes.map((label, i) => ({
+        label,
+        price: Number(prices[i] ?? 0),
+        ...normalizeBook(books[i] ?? { bids: [], asks: [] }),
+      })),
+      volume: Number(m.volume),
+      liquidity: Number(m.liquidity),
+      active: m.active,
+      closed: m.closed,
+    }
+  })
 
   const currentPrice = klines1h[klines1h.length - 1]?.close ?? 0
   const nowTs = Date.now()
-  const expiryTs = new Date(market.endDate).getTime()
 
   const ctx = {
-    market: {
-      slug: market.slug,
-      question: market.question,
-      strike,
-      expiryDate: market.endDate,
-      outcomes: outcomesWithBook,
-      volume: Number(market.volume),
-      liquidity: Number(market.liquidity),
-      active: market.active,
-      closed: market.closed,
-    },
+    markets,
     underlying: {
       symbol: underlying,
       price: currentPrice,
@@ -221,8 +232,6 @@ async function main(): Promise<void> {
     },
     timing: {
       nowTs,
-      expiryTs,
-      hoursToExpiry: (expiryTs - nowTs) / 3_600_000,
     },
   }
 
