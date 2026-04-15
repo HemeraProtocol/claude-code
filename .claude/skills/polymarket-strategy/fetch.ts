@@ -10,6 +10,8 @@
 import { parseArgs } from 'util'
 import { randomBytes } from 'node:crypto'
 
+import { parseQuestion } from './parser'
+
 // ─── CLI args ────────────────────────────────────────────────────────────────
 
 const { values } = parseArgs({
@@ -212,19 +214,19 @@ async function main(): Promise<void> {
     const books = allBooks.slice(bookCursor, bookCursor + tokenIds.length)
     bookCursor += tokenIds.length
 
-    const strikeMatch = m.question.match(/\$([0-9,]+(?:\.[0-9]+)?)/i)
-    const isDirectional = /up or down/i.test(m.question)
-    const kind: 'absolute' | 'directional' = isDirectional ? 'directional' : 'absolute'
-    const strike = kind === 'absolute' && strikeMatch
-      ? Number(strikeMatch[1]!.replace(/,/g, ''))
-      : null
+    const { questionType, strike, strike2, parser, confidence } = parseQuestion(m.question)
+    const kind: 'absolute' | 'directional' = questionType === 'directional' ? 'directional' : 'absolute'
     const expiryTs = new Date(m.endDate).getTime()
 
     return {
       slug: m.slug,
       question: m.question,
+      questionType,
       kind,
       strike,
+      strike2,
+      parser,
+      confidence,
       expiryDate: m.endDate,
       expiryTs,
       hoursToExpiry: (Date.now() - expiryTs) / -3_600_000,
@@ -244,6 +246,10 @@ async function main(): Promise<void> {
   const nowTs = Date.now()
 
   const ctx = {
+    event: {
+      slug: event.slug,
+      title: event.title,
+    },
     markets,
     underlying: {
       symbol: underlying,
