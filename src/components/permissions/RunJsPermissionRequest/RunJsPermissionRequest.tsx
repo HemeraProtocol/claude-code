@@ -9,6 +9,7 @@ import { PermissionDialog } from '../PermissionDialog.js'
 import type { PermissionRequestProps } from '../PermissionRequest.js'
 import { PermissionRuleExplanation } from '../PermissionRuleExplanation.js'
 import { logUnaryPermissionEvent } from '../utils.js'
+import { getHelpersFull, getRunJsCode } from '../../../tools/RunJsTool/display.js'
 
 export function RunJsPermissionRequest({
   toolUseConfirm,
@@ -21,17 +22,16 @@ export function RunJsPermissionRequest({
     ctx?: unknown
     ctxPath?: string
     helpersModulePath?: string
+    executionLogPath?: string
     timeoutMs?: number
   }
 
-  const codeLen = input.code?.length ?? 0
   const ctxKeys =
     input.ctx && typeof input.ctx === 'object'
       ? Object.keys(input.ctx as object).length
       : 0
-  const helpersShort = input.helpersModulePath
-    ? input.helpersModulePath.split('/').slice(-2).join('/')
-    : '(none)'
+  const helpersFull = getHelpersFull(input.helpersModulePath)
+  const codeDisplay = getRunJsCode(input)
 
   const unaryEvent = useMemo<UnaryEvent>(
     () => ({ completion_type: 'tool_use_single', language_name: 'none' }),
@@ -74,10 +74,21 @@ export function RunJsPermissionRequest({
     <PermissionDialog title="Run JS code" workerBadge={workerBadge}>
       <Box flexDirection="column" paddingX={2} paddingY={1}>
         <Text>
-          code=<Text bold>{codeLen}b</Text> ctx=<Text bold>{ctxKeys} keys</Text>{' '}
-          helpers=<Text bold>{helpersShort}</Text>
+          ctx=<Text bold>{ctxKeys} keys</Text>
+        </Text>
+        <Text>
+          helpers=<Text bold>{helpersFull}</Text>
         </Text>
         <Text dimColor>{toolUseConfirm.description}</Text>
+        {input.executionLogPath ? (
+          <Text dimColor>log={input.executionLogPath}</Text>
+        ) : null}
+        <Text dimColor>
+          This code runs in a child process with filesystem and network access.
+        </Text>
+        <Box marginTop={1}>
+          <Text>{codeDisplay}</Text>
+        </Box>
       </Box>
 
       <Box flexDirection="column">

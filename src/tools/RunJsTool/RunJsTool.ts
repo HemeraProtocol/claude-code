@@ -5,6 +5,7 @@ import { lazySchema } from '../../utils/lazySchema.js'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { RUN_JS_TOOL_NAME, DESCRIPTION } from './constants.js'
+import { renderRunJsMessage } from './display.js'
 
 // RUNNER_PATH resolution:
 // - dev mode (bun run src/...): import.meta.url is the source file URL, runner.ts is co-located
@@ -27,6 +28,12 @@ const inputSchema = lazySchema(() =>
     helpersModulePath: z.string().optional().describe(
       'Absolute path to a .ts/.js module. Exported `helpers` object is merged into ctx.helpers.',
     ),
+    executionLogPath: z.string().optional().describe(
+      'Optional path to a JSON file where execution inputs and outputs should be recorded. Must be under CWD.',
+    ),
+    resultShape: z.enum(['free', 'strategy-array']).optional().describe(
+      'Optional runtime validation on the returned result. "strategy-array" enforces an array of {question, decision} with passthrough. Default "free" (any value).',
+    ),
     timeoutMs: z.number().int().positive().optional().describe(
       'Execution timeout in ms. Default 5000.',
     ),
@@ -35,7 +42,11 @@ const inputSchema = lazySchema(() =>
 type InputSchema = ReturnType<typeof inputSchema>
 
 const outputSchema = lazySchema(() =>
-  z.object({ result: z.unknown(), durationMs: z.number() }),
+  z.object({
+    result: z.unknown(),
+    durationMs: z.number(),
+    executionLogPath: z.string().optional(),
+  }),
 )
 type OutputSchema = ReturnType<typeof outputSchema>
 
@@ -69,9 +80,7 @@ export const RunJsTool = buildTool({
   },
 
   renderToolUseMessage(input: Partial<z.infer<InputSchema>>): React.ReactNode {
-    const codeLen = input.code?.length ?? 0
-    const helpers = input.helpersModulePath?.split('/').slice(-2).join('/') ?? '(none)'
-    return `RunJS code=${codeLen}b helpers=${helpers}`
+    return renderRunJsMessage(input)
   },
 
   async call(input) {
@@ -80,6 +89,8 @@ export const RunJsTool = buildTool({
       ctx: input.ctx ?? {},
       ctxPath: input.ctxPath ?? null,
       helpersModulePath: input.helpersModulePath ?? null,
+      executionLogPath: input.executionLogPath ?? null,
+      resultShape: input.resultShape ?? 'free',
       timeoutMs: input.timeoutMs ?? 5000,
     })
 
@@ -124,10 +135,13 @@ export const RunJsTool = buildTool({
   },
 
   mapToolResultToToolResultBlockParam(output, toolUseID) {
+    const logLine = output.executionLogPath
+      ? `\nexecutionLogPath: ${output.executionLogPath}`
+      : ''
     return {
       tool_use_id: toolUseID,
       type: 'tool_result',
-      content: `result: ${JSON.stringify(output.result)}\ndurationMs: ${output.durationMs}`,
+      content: `result: ${JSON.stringify(output.result)}\ndurationMs: ${output.durationMs}${logLine}`,
     }
   },
 } satisfies ToolDef<InputSchema, Output>)

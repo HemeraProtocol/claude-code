@@ -85,7 +85,6 @@ function logReturns(prices: number[]): number[] {
 // ─── Label sets for outcome recognition ─────────────────────────────────────
 
 const YES_LIKE = new Set(['yes', 'up', 'above', 'over', 'higher', '>'])
-const NO_LIKE  = new Set(['no',  'down', 'below', 'under', 'lower', '<'])
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -99,32 +98,46 @@ interface SideInfo {
   bestAsk: number | null
 }
 
-interface DecideResult {
-  side: 'yes' | 'no' | 'hold'
-  pHat: number
-  marketPrice: number
-  edge: number
-  reason: string
+interface BarrierDistanceInfo {
+  currentPrice: number
+  lower: number
+  upper: number
+  pctToLower: number
+  pctToUpper: number
+  logDistToLower: number
+  logDistToUpper: number
 }
 
-interface BinaryDecideResult {
-  side: string
-  sideIndex: 0 | 1 | null
-  sideLabel: string | null
+interface BinaryEdgeInfo {
+  index: 0 | 1
+  label: string
   fairPrice: number
   marketPrice: number
   edge: number
-  reason: string
+  bestBid: number | null
+  bestAsk: number | null
 }
 
-type FairProbOpts = {
+type PricingOpts = {
   sigmaWindow?: VolWindow
   sigmaOverride?: number
   simPaths?: number
   simSteps?: number
+  seed?: number
 }
 
-// ─── High-level strategy building blocks ────────────────────────────────────
+/** mulberry32 — deterministic seeded RNG for reproducible Monte Carlo. */
+function mulberry32(seed: number): () => number {
+  let t = seed >>> 0
+  return () => {
+    t = (t + 0x6d2b79f5) | 0
+    let r = Math.imul(t ^ (t >>> 15), 1 | t)
+    r = (r + Math.imul(r ^ (r >>> 7), 61 | r)) ^ r
+    return ((r ^ (r >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+type QuestionType = 'above' | 'below' | 'range' | 'hit' | 'directional' | 'firstHit' | 'unknown'
 
 // ─── Shared vol + time resolver ──────────────────────────────────────────────
 
@@ -147,7 +160,14 @@ function resolveVolAndTime(
     underlying.realizedVol?.['24h'] ??
     1
   const S = underlying.price as number
-  const T = (timing.expiryTs - timing.nowTs) / (365.25 * 24 * 3600 * 1000)
+  const expiryTs = ctx.market?.expiryTs ?? timing?.expiryTs
+  if (typeof expiryTs !== 'number') {
+    throw new Error(`${callerName}: requires ctx.market.expiryTs or ctx.timing.expiryTs`)
+  }
+  if (typeof timing?.nowTs !== 'number') {
+    throw new Error(`${callerName}: requires ctx.timing.nowTs`)
+  }
+  const T = (expiryTs - timing.nowTs) / (365.25 * 24 * 3600 * 1000)
   return { sigma, S, T }
 }
 
@@ -203,66 +223,90 @@ function bsOneTouch(
   return 2 * normCDF(-logDist / (sigma * Math.sqrt(T)))
 }
 
-// ─── Primary dispatch ────────────────────────────────────────────────────────
+// ─── Time, vol, and market feature helpers ──────────────────────────────────
 
-/**
- * P(YES outcome) for any Polymarket crypto market type.
- * Dispatches to the correct formula based on ctx.market.questionType.
- * Use this instead of bsProbUp for new strategy code.
- */
-function probYes(
-  ctx: Record<string, any>,
-  opts: { sigmaWindow?: VolWindow; sigmaOverride?: number } = {},
-): number {
-  const t: string = ctx.market.questionType ?? 'unknown'
-  switch (t) {
-    case 'above':       return bsAbove(ctx, opts)
-    case 'below':       return 1 - bsAbove(ctx, opts)
-    case 'range':       return bsRange(ctx, opts)
-    case 'hit':         return bsOneTouch(ctx, opts)
-    case 'directional': return directionalProbUp(ctx, opts as any)
-    case 'firstHit':    throw new Error("probYes: firstHit is not a yes/no market; use fairProbs(ctx)")
-    case 'unknown':     throw new Error(`probYes: questionType is 'unknown' for question: "${ctx.market.question}"`)
-    default:            throw new Error(`probYes: unrecognized questionType '${t}'`)
+function timeToExpiryYears(ctx: Record<string, any>): number {
+  const expiryTs = ctx.market?.expiryTs ?? ctx.timing?.expiryTs
+  const nowTs = ctx.timing?.nowTs
+  if (typeof expiryTs !== 'number' || typeof nowTs !== 'number') {
+    throw new Error('timeToExpiryYears: ctx.market.expiryTs/ctx.timing.expiryTs and ctx.timing.nowTs are required')
   }
+  return (expiryTs - nowTs) / (365.25 * 24 * 3600 * 1000)
 }
 
-/**
- * Black-Scholes probability that underlying ends ABOVE the strike at expiry.
- * Uses realized vol for the chosen window (default '1h').
- * Throws if the required vol window was unavailable at fetch time (see ctx.underlying.realizedVolWarnings).
- *
- * @deprecated Use probYes(ctx) which dispatches correctly for all question types
- * (above/below/range/hit). bsProbUp always computes P(S > K) and will give
- * wrong results for below/range/hit markets.
- */
-function bsProbUp(
-  ctx: Record<string, any>,
-  opts: { sigmaWindow?: VolWindow; sigmaOverride?: number } = {},
-): number {
-  return bsAbove(ctx, opts)
+function timeToExpiryHours(ctx: Record<string, any>): number {
+  return timeToExpiryYears(ctx) * 365.25 * 24
 }
 
-/**
- * Probability that underlying goes UP (S_end >= S_start) in a short window.
- * For directional Polymarket markets (e.g. "BTC Up or Down 5m") where the
- * strike is NOT a fixed dollar amount but the window-open price.
- *
- * Under log-normal with drift μ=0: P(S_end >= S_0) = N(-0.5·σ·√T) ≈ 0.5
- * Edge on directional markets should come from microstructure, not BS.
- */
-function directionalProbUp(
+function vol(ctx: Record<string, any>, window: VolWindow = '1h'): number {
+  const warnings: string[] = ctx.underlying?.realizedVolWarnings ?? []
+  if (warnings.some((w: string) => w.includes(`realizedVol[${window}]`))) {
+    throw new Error(`vol: realized vol for window '${window}' unavailable`)
+  }
+  const sigma = ctx.underlying?.realizedVol?.[window]
+  if (typeof sigma !== 'number') {
+    throw new Error(`vol: realized vol for window '${window}' missing`)
+  }
+  return sigma
+}
+
+function volRatio(
   ctx: Record<string, any>,
-  opts: { sigmaWindow?: VolWindow } = {},
+  shortWindow: VolWindow = '1h',
+  longWindow: VolWindow = '30d',
 ): number {
-  const { underlying, timing, market } = ctx
-  const sigma =
-    underlying.realizedVol?.[opts.sigmaWindow ?? '1h'] ??
-    underlying.realizedVol?.['24h'] ??
-    1
-  const T = (market.expiryTs - timing.nowTs) / (365.25 * 24 * 3600 * 1000)
-  if (T <= 0) return 0.5
-  return normCDF(-0.5 * sigma * Math.sqrt(T))
+  const longVol = vol(ctx, longWindow)
+  if (longVol <= 0) throw new Error('volRatio: longWindow vol must be > 0')
+  return vol(ctx, shortWindow) / longVol
+}
+
+function distanceToStrike(ctx: Record<string, any>): number {
+  const S = ctx.underlying?.price
+  const K = ctx.market?.strike
+  if (typeof S !== 'number' || S <= 0 || typeof K !== 'number' || K <= 0) {
+    throw new Error('distanceToStrike: underlying.price and market.strike must both be positive numbers')
+  }
+  return (K - S) / S
+}
+
+function distanceToRangeMid(ctx: Record<string, any>): number {
+  const S = ctx.underlying?.price
+  const K1 = ctx.market?.strike
+  const K2 = ctx.market?.strike2
+  if (
+    typeof S !== 'number' || S <= 0 ||
+    typeof K1 !== 'number' || K1 <= 0 ||
+    typeof K2 !== 'number' || K2 <= 0
+  ) {
+    throw new Error('distanceToRangeMid: underlying.price, market.strike, and market.strike2 must all be positive numbers')
+  }
+  const mid = (K1 + K2) / 2
+  return (mid - S) / S
+}
+
+function distanceToBarriers(ctx: Record<string, any>): BarrierDistanceInfo {
+  const S = ctx.underlying?.price
+  const strikeA = ctx.market?.strike
+  const strikeB = ctx.market?.strike2
+  if (
+    typeof S !== 'number' || S <= 0 ||
+    typeof strikeA !== 'number' || strikeA <= 0 ||
+    typeof strikeB !== 'number' || strikeB <= 0
+  ) {
+    throw new Error('distanceToBarriers: underlying.price, market.strike, and market.strike2 must all be positive numbers')
+  }
+
+  const lower = Math.min(strikeA, strikeB)
+  const upper = Math.max(strikeA, strikeB)
+  return {
+    currentPrice: S,
+    lower,
+    upper,
+    pctToLower: (lower - S) / S,
+    pctToUpper: (upper - S) / S,
+    logDistToLower: Math.abs(Math.log(lower / S)),
+    logDistToUpper: Math.abs(Math.log(upper / S)),
+  }
 }
 
 /**
@@ -299,7 +343,7 @@ function outcomeSides(ctx: Record<string, any>): [SideInfo, SideInfo] {
   return sides
 }
 
-function fairProbabilitiesFromPYes(ctx: Record<string, any>, pYes: number): [number, number] {
+function binaryProbsFromYesProb(ctx: Record<string, any>, pYes: number): [number, number] {
   const yes = yesSide(ctx)
   const noIndex: 0 | 1 = yes.index === 0 ? 1 : 0
   const probs: [number, number] = [0, 0]
@@ -308,20 +352,9 @@ function fairProbabilitiesFromPYes(ctx: Record<string, any>, pYes: number): [num
   return probs
 }
 
-function normalizeBinaryProbabilities(probabilities: number[]): [number, number] {
-  if (probabilities.length !== 2) {
-    throw new Error(`normalizeBinaryProbabilities: expected 2 probabilities, got ${probabilities.length}`)
-  }
-  const raw0 = clamp01(probabilities[0] ?? 0)
-  const raw1 = clamp01(probabilities[1] ?? 0)
-  const sum = raw0 + raw1
-  if (sum <= 0) return [0.5, 0.5]
-  return [raw0 / sum, raw1 / sum]
-}
-
 function firstHitProbabilities(
   ctx: Record<string, any>,
-  opts: FairProbOpts = {},
+  opts: PricingOpts = {},
 ): [number, number] {
   const { sigma, S, T } = resolveVolAndTime(ctx, opts, 'firstHitProbabilities')
   const strikeA = ctx.market.strike as number
@@ -362,14 +395,16 @@ function firstHitProbabilities(
   let noHit = 0
   let spareNormal: number | null = null
 
+  const rand = typeof opts.seed === 'number' ? mulberry32(opts.seed) : Math.random
+
   const nextNormal = (): number => {
     if (spareNormal !== null) {
       const out = spareNormal
       spareNormal = null
       return out
     }
-    const u1 = Math.max(Number.EPSILON, Math.random())
-    const u2 = Math.random()
+    const u1 = Math.max(Number.EPSILON, rand())
+    const u2 = rand()
     const mag = Math.sqrt(-2 * Math.log(u1))
     const z0 = mag * Math.cos(2 * Math.PI * u2)
     spareNormal = mag * Math.sin(2 * Math.PI * u2)
@@ -403,25 +438,27 @@ function firstHitProbabilities(
   return alignProbabilities(lowerProb, upperProb)
 }
 
-function fairProbs(
-  ctx: Record<string, any>,
-  opts: FairProbOpts = {},
-): [number, number] {
-  const t: string = ctx.market.questionType ?? 'unknown'
-  switch (t) {
-    case 'above':
-    case 'below':
-    case 'range':
-    case 'hit':
-    case 'directional':
-      return fairProbabilitiesFromPYes(ctx, probYes(ctx, opts))
-    case 'firstHit':
-      return normalizeBinaryProbabilities(firstHitProbabilities(ctx, opts))
-    case 'unknown':
-      throw new Error(`fairProbs: questionType is 'unknown' for question: "${ctx.market.question}"`)
-    default:
-      throw new Error(`fairProbs: unrecognized questionType '${t}'`)
+function eventQuestionTypes(ctx: Record<string, any>): QuestionType[] {
+  const types = new Set<QuestionType>()
+  const markets: Array<Record<string, any>> = ctx.markets ?? []
+  for (const market of markets) {
+    types.add((market.questionType ?? 'unknown') as QuestionType)
   }
+  return [...types]
+}
+
+/**
+ * Returns the single non-unknown questionType shared by all markets in the event.
+ * - Mixed-type events → `null` (caller must dispatch per-market).
+ * - All-unknown events → throws (data error, fetch failed to classify).
+ */
+function eventPrimaryQuestionType(ctx: Record<string, any>): QuestionType | null {
+  const types = eventQuestionTypes(ctx).filter((type) => type !== 'unknown')
+  if (types.length === 0) {
+    throw new Error('eventPrimaryQuestionType: no supported questionType found in ctx.markets')
+  }
+  if (types.length !== 1) return null
+  return types[0]!
 }
 
 /** Returns the "YES" side metadata from ctx.market.outcomes.
@@ -463,77 +500,85 @@ function noSide(ctx: Record<string, any>): SideInfo {
   }
 }
 
-/**
- * Compute edge against bestAsk (real cost after crossing the spread) and return a signal.
- * threshold defaults to 0.05 (5 cent edge required to trade).
- */
-function effectiveEdge(
-  pHat: number,
-  ctx: Record<string, any>,
-  opts: { threshold?: number } = {},
-): DecideResult {
-  const threshold = opts.threshold ?? 0.05
-  const yes = yesSide(ctx)
-  const no = noSide(ctx)
-  const yesAsk = yes.bestAsk ?? yes.outcomePrice
-  const noAsk = no.bestAsk ?? no.outcomePrice
-  const yesBuyEdge = pHat - yesAsk
-  const noBuyEdge = (1 - pHat) - noAsk
-
-  if (yesBuyEdge >= noBuyEdge) {
-    if (yesBuyEdge < threshold) {
-      return { side: 'hold', pHat, marketPrice: yesAsk, edge: yesBuyEdge, reason: 'effective edge below threshold (after spread)' }
-    }
-    return { side: 'yes', pHat, marketPrice: yesAsk, edge: yesBuyEdge, reason: 'model > market (ask-adjusted)' }
-  } else {
-    if (noBuyEdge < threshold) {
-      return { side: 'hold', pHat, marketPrice: noAsk, edge: noBuyEdge, reason: 'effective edge below threshold (after spread)' }
-    }
-    return { side: 'no', pHat, marketPrice: noAsk, edge: noBuyEdge, reason: 'model < market (ask-adjusted)' }
-  }
+function outcomeAsks(ctx: Record<string, any>): [number, number] {
+  const sides = outcomeSides(ctx)
+  return [
+    sides[0].bestAsk ?? sides[0].outcomePrice,
+    sides[1].bestAsk ?? sides[1].outcomePrice,
+  ]
 }
 
-function effectiveEdgeBinary(
+function outcomeBids(ctx: Record<string, any>): [number, number] {
+  const sides = outcomeSides(ctx)
+  return [
+    sides[0].bestBid ?? sides[0].outcomePrice,
+    sides[1].bestBid ?? sides[1].outcomePrice,
+  ]
+}
+
+function spreadByOutcome(ctx: Record<string, any>): [number, number] {
+  const sides = outcomeSides(ctx)
+  return [
+    (sides[0].bestAsk ?? sides[0].outcomePrice) - (sides[0].bestBid ?? sides[0].outcomePrice),
+    (sides[1].bestAsk ?? sides[1].outcomePrice) - (sides[1].bestBid ?? sides[1].outcomePrice),
+  ]
+}
+
+/**
+ * Price-domain no-arb residual per outcome: `bid_i - (1 - ask_{!i})`.
+ * Positive means the side is bid above the opposite ask's complement (a
+ * potential arbitrage if both are live). This is a residual in price space,
+ * NOT a measure of orderbook pressure — do not add directly to probabilities.
+ */
+function noArbResidual(ctx: Record<string, any>): [number, number] {
+  const bids = outcomeBids(ctx)
+  const asks = outcomeAsks(ctx)
+  return [
+    bids[0] - (1 - asks[1]),
+    bids[1] - (1 - asks[0]),
+  ]
+}
+
+/**
+ * Computes per-outcome edge = fair - ask, aligned to `market.outcomes` order.
+ *
+ * Requires the input to be a valid 2-simplex (`|p0 + p1 - 1| < 1e-6`) —
+ * throws otherwise. Callers must construct probabilities that sum to 1;
+ * use `binaryProbsFromYesProb` or log-odds adjustment to preserve the invariant.
+ */
+function edgeFromProbs(
   probabilities: [number, number],
   ctx: Record<string, any>,
-  opts: { threshold?: number } = {},
-): BinaryDecideResult {
-  const threshold = opts.threshold ?? 0.05
+): [BinaryEdgeInfo, BinaryEdgeInfo] {
+  if (probabilities.length !== 2) {
+    throw new Error(`edgeFromProbs: expected 2 probabilities, got ${probabilities.length}`)
+  }
+  const p0 = probabilities[0]
+  const p1 = probabilities[1]
+  if (typeof p0 !== 'number' || typeof p1 !== 'number' || !Number.isFinite(p0) || !Number.isFinite(p1)) {
+    throw new Error('edgeFromProbs: both probabilities must be finite numbers')
+  }
+  if (Math.abs(p0 + p1 - 1) > 1e-6) {
+    throw new Error(
+      `edgeFromProbs: probabilities must sum to 1 (got ${p0} + ${p1} = ${p0 + p1}); ` +
+        'use binaryProbsFromYesProb or log-odds adjustment to preserve the 2-simplex',
+    )
+  }
   const sides = outcomeSides(ctx)
-  const probs = normalizeBinaryProbabilities(probabilities)
   const candidates = sides.map((side, index) => {
     const ask = side.bestAsk ?? side.outcomePrice
-    const fairPrice = probs[index] ?? 0.5
+    const fairPrice = index === 0 ? p0 : p1
     return {
-      ...side,
+      index: side.index,
+      label: side.label,
       fairPrice,
       marketPrice: ask,
       edge: fairPrice - ask,
+      bestBid: side.bestBid,
+      bestAsk: side.bestAsk,
     }
-  })
-
-  const best = candidates[0]!.edge >= candidates[1]!.edge ? candidates[0]! : candidates[1]!
-  if (best.edge < threshold) {
-    return {
-      side: 'hold',
-      sideIndex: best.index,
-      sideLabel: best.label,
-      fairPrice: best.fairPrice,
-      marketPrice: best.marketPrice,
-      edge: best.edge,
-      reason: 'effective edge below threshold (after spread)',
-    }
-  }
-
-  return {
-    side: best.label,
-    sideIndex: best.index,
-    sideLabel: best.label,
-    fairPrice: best.fairPrice,
-    marketPrice: best.marketPrice,
-    edge: best.edge,
-    reason: 'model > market (ask-adjusted)',
-  }
+  }) as [BinaryEdgeInfo, BinaryEdgeInfo]
+  return candidates
 }
 
 // ─── Export ──────────────────────────────────────────────────────────────────
@@ -548,19 +593,31 @@ export const helpers = {
   emaArray,
   rsi,
   logReturns,
-  // strategy — preferred
-  fairProbs,
-  probYes,
+  // baseline pricing primitives
   bsAbove,
   bsRange,
   bsOneTouch,
-  directionalProbUp,
   empiricalProbUp,
+  firstHitProbabilities,
+  binaryProbsFromYesProb,
+  eventQuestionTypes,
+  eventPrimaryQuestionType,
+  // feature helpers
+  timeToExpiryHours,
+  timeToExpiryYears,
+  vol,
+  volRatio,
+  distanceToStrike,
+  distanceToRangeMid,
+  distanceToBarriers,
+  // market structure helpers
   outcomeSides,
   yesSide,
   noSide,
-  effectiveEdge,
-  effectiveEdgeBinary,
-  // deprecated
-  bsProbUp,
+  outcomeAsks,
+  outcomeBids,
+  spreadByOutcome,
+  noArbResidual,
+  // execution helpers
+  edgeFromProbs,
 }

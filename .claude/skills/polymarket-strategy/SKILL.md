@@ -22,11 +22,12 @@ user-invocable: "true"
     bun run "${CLAUDE_SKILL_DIR}/fetch.ts" --slug <slug> --underlying <UNDERLYING> [--limit 200]
     ```
 
-    The script writes the full ctx to `/tmp/polymarket-ctx-<slug>.json` and prints `{"ctxPath":"/tmp/..."}` to stdout.
-    Parse stdout JSON and extract `ctxPath` (do **not** use ctx inline — it is too large for tool results).
+    The script writes the full ctx to `/tmp/polymarket-ctx-<slug>.json` and prints `{"ctxPath":"/tmp/...","executionLogPath":"..."}` to stdout.
+    Parse stdout JSON and extract both `ctxPath` and `executionLogPath` (do **not** use ctx inline — it is too large for tool results).
     **Do NOT inspect the file via Bash** — the schema is documented below; proceed directly to Step 3.
 
-3. **Compose a strategy** (≤15 lines) using helpers documented below.
+3. **Compose a strategy** using helpers documented below.
+    - Prefer concise code, but do **not** sacrifice question-type-specific logic just to stay short. A 20–40 line strategy is fine if it uses baseline pricing plus feature adjustments.
     - ⚠️ **FORBIDDEN in `code`**: `import`, `require`, `export` — the code runs inside `new Function()` with no module system. All helpers are already in `ctx.helpers`.
     - ⚠️ **FORBIDDEN**: reading files or making network calls inside `code`. All data is in `ctx`.
 
@@ -35,6 +36,8 @@ user-invocable: "true"
     - `ctxPath`: the path from step 2 (e.g. `/tmp/polymarket-ctx-<slug>.json`)
     - `ctx`: `{}` (leave empty — ctxPath takes priority)
     - `helpersModulePath`: `"${CLAUDE_SKILL_DIR}/helpers.ts"`
+    - `executionLogPath`: the path from step 2; this records code/result provenance for later evaluation. Must be under the current working directory.
+    - `resultShape`: `"strategy-array"` — enforces that `result` is an array of `{question, decision}` objects; extra fields are allowed.
     - `timeoutMs`: 5000
 
 5. **Report in Chinese**: 先写 event 标题，再逐个 market 汇报：市场问题, 到期时间, 盘口价格, 模型估计概率, 决策, 一句话原因, edge 大小。
@@ -100,96 +103,193 @@ ctx.timing
 - `rsi(closes, period?)` — Wilder-smoothed RSI of latest bar. Default period 14. Returns 50 if not enough bars.
 - `logReturns(prices)` — log return array
 
-### Strategy building blocks
+### Baseline pricing primitives (per questionType)
 
-- `fairProbs(ctx, {sigmaWindow?, sigmaOverride?, simPaths?, simSteps?})` → `[p0, p1]`
-  **Preferred for all binary markets.** Returns fair probabilities aligned to `market.outcomes` index order.
-    - `above` / `below` / `range` / `hit` / `directional` map to `[p(outcome0), p(outcome1)]`
-    - `firstHit` uses a Monte Carlo first-touch model and applies Polymarket's "no touch => 50/50" rule
-- `probYes(ctx, {sigmaWindow?, sigmaOverride?})` → number
-  **Yes/No only.** Dispatches to the correct BS formula based on `market.questionType`:
-    - `above` → N(d2) = P(S_T > K)
-    - `below` → 1 − N(d2) = P(S_T < K)
-    - `range` → N(d2_lo) − N(d2_hi) = P(K_lo ≤ S_T ≤ K_hi); requires `strike2`
-    - `hit` → 2·N(−|ln(K/S)|/(σ√T)), one-touch barrier (no-drift approx)
-    - `directional` → delegates to `directionalProbUp` (≈ 0.5)
-      Throws if `questionType === 'firstHit'`, `questionType === 'unknown'`, or vol window missing.
-- `bsAbove(ctx, opts)` — underlying primitive for above type; exported for inspection.
-- `bsRange(ctx, opts)` — range formula; throws if `strike2` missing.
-- `bsOneTouch(ctx, opts)` — one-touch barrier; works for both up and down.
-- `bsProbUp(ctx, {sigmaWindow?, sigmaOverride?})` → number
-  **Deprecated** — alias for `bsAbove`. Always computes P(S > K); incorrect for below/range/hit.
-- `directionalProbUp(ctx, {sigmaWindow?})` → number
-  For "Up or Down" markets: returns N(-0.5·σ·√T) ≈ 0.5. Model cannot provide edge here; edge must come from orderbook imbalance.
-- `empiricalProbUp(ctx, {lookback?})` → number
-  Fraction of recent kline bars that closed up.
-- `outcomeSides(ctx)` → `[side0, side1]`
-  Returns both binary outcomes with labels and orderbook info, preserving market order.
-- `yesSide(ctx)` → `{index, label, outcomePrice, bestBid, bestAsk}`
-  Recognises "yes/up/above/over/higher/>" labels. Throws on unknown labels.
-- `noSide(ctx)` → same shape
-- `effectiveEdge(pHat, ctx, {threshold?})` → `{side, pHat, marketPrice, edge, reason}`
-  Legacy helper for Yes/No-style markets only. Computes edge against `bestAsk` (real cost after crossing the spread).
-- `effectiveEdgeBinary(probs, ctx, {threshold?})` → `{side, sideIndex, sideLabel, fairPrice, marketPrice, edge, reason}`
-  Generic binary-market decision helper. `probs` must align to `market.outcomes` order, so it works for `Yes/No`, `Up/Down`, and `$60k/$80k`-style first-hit markets.
-  Threshold default 0.05.
+There is **no** dispatcher helper. You choose the primitive based on the event's `questionType`:
 
-## Reference Strategy (generic binary markets)
+- `above` → `bsAbove(mCtx, opts?)`
+- `below` → `1 - bsAbove(mCtx, opts?)`
+- `range` → `bsRange(mCtx, opts?)` — requires `strike2`
+- `hit` → `bsOneTouch(mCtx, opts?)`
+- `firstHit` → `firstHitProbabilities(mCtx, opts?)` — returns `[p0, p1]` aligned to `market.outcomes`
+- `directional` → **no stable BS baseline** (zero-drift lognormal is ~0.5). Compose from orderbook + momentum.
+
+All scalar baselines return the **YES-side** probability. To get a valid 2-simplex aligned to `market.outcomes`, wrap with `binaryProbsFromYesProb(mCtx, pYes)`.
+
+- `bsAbove(mCtx, {sigmaWindow?, sigmaOverride?})` → number
+  `P(S_T > K)` under zero-drift lognormal.
+- `bsRange(mCtx, {sigmaWindow?, sigmaOverride?})` → number
+  `P(K_lo ≤ S_T ≤ K_hi)`.
+- `bsOneTouch(mCtx, {sigmaWindow?, sigmaOverride?})` → number
+  No-drift one-touch barrier probability.
+- `firstHitProbabilities(mCtx, {sigmaWindow?, sigmaOverride?, simPaths?, simSteps?, seed?})` → `[p0, p1]`
+  Monte Carlo two-barrier race, aligned to `market.outcomes` order. Pass `seed` for reproducibility.
+- `empiricalProbUp(mCtx, {lookback?})` → number
+  Recent fraction of up-closes from klines. Lightweight directional feature.
+- `binaryProbsFromYesProb(mCtx, pYes)` → `[p0, p1]`
+  Aligns a yes/up/above-style probability to `market.outcomes` order. Returns a valid 2-simplex (sums to 1).
+
+### Event-level type helpers
+
+- `eventQuestionTypes(ctx)` → `questionType[]`
+  Distinct `questionType` values present in `ctx.markets`.
+- `eventPrimaryQuestionType(ctx)` → `questionType | null`
+  Returns the single non-unknown type if the event is single-type, otherwise **`null`** (mixed).
+  Throws only when all markets are `'unknown'` (fetch/parse failure).
+
+### Feature helpers
+
+- `timeToExpiryHours(mCtx)`, `timeToExpiryYears(mCtx)`
+- `vol(ctx, window?)` — realized vol for the chosen window; throws if fetch warned that window failed.
+- `volRatio(ctx, shortWindow?, longWindow?)`
+- `distanceToStrike(mCtx)` — signed percent distance `(strike - spot) / spot`
+- `distanceToRangeMid(mCtx)` — signed percent distance from spot to range midpoint
+- `distanceToBarriers(mCtx)` → `{currentPrice, lower, upper, pctToLower, pctToUpper, logDistToLower, logDistToUpper}`
+
+### Market structure helpers
+
+- `outcomeSides(mCtx)` → `[side0, side1]`
+- `yesSide(mCtx)`, `noSide(mCtx)` — label recognizers for `Yes/No` and `Up/Down` style markets
+- `outcomeAsks(mCtx)`, `outcomeBids(mCtx)`
+- `spreadByOutcome(mCtx)`
+- `noArbResidual(mCtx)` → `[residual0, residual1]`
+  **Price-domain** residual `bid_i - (1 - ask_{!i})`. Positive = potential arbitrage against the opposite quote.
+  ⚠️ This is NOT orderbook pressure / flow imbalance. Do **not** add directly to probabilities.
+
+### Execution helpers
+
+- `edgeFromProbs(probs, mCtx)` → `[edge0, edge1]`
+  Returns per-outcome `{fairPrice, marketPrice, edge, bestBid, bestAsk}` aligned to `market.outcomes`.
+  **Strict**: throws if `probs` is not a valid 2-simplex (`|p0 + p1 - 1| > 1e-6`). Construct probabilities
+  via `binaryProbsFromYesProb` or a log-odds adjustment to preserve the invariant.
+
+## Strategy Guidance
+
+Strategy composition is **your** job. The helpers are primitives, not a dispatcher.
+
+1. Compute event-scope features **once** (RSI, EMA slope, realized vol, etc.) before `.map`.
+2. Inside `.map`, build `mCtx = { market, underlying: ctx.underlying, timing: ctx.timing }`.
+   `resolveVolAndTime` reads `market.expiryTs` directly — you do not need to splat `timing.expiryTs`.
+3. Compute the per-questionType baseline `pYes` from the primitives listed above.
+4. Apply adjustments **in log-odds space**: `logit(p) + Σ shift → sigmoid`. This preserves the 2-simplex automatically and avoids the need for runtime renormalization.
+5. Build the aligned pair via `binaryProbsFromYesProb(mCtx, pYesAdjusted)`.
+6. Call `edgeFromProbs(probs, mCtx)`, compare the best edge to your threshold, and return a signal.
+7. Wrap every market body in `try/catch` so one broken market does not kill the whole event report.
+
+**NEVER** write per-questionType `if/else` or `switch` inside `.map` unless `eventPrimaryQuestionType(ctx)` is `null` (genuinely mixed event).
+
+Recommended feature sets:
+
+- `directional`: RSI, MACD, short momentum, volume confirmation, noArbResidual as a price-domain sanity check
+- `above` / `below`: BS baseline, distance to strike, momentum, vol regime
+- `range`: BS baseline, distance to range midpoint, vol regime, trend strength
+- `hit`: BS baseline, distance to strike, vol regime, acceleration toward the barrier
+- `firstHit`: Monte Carlo baseline, distance to barriers, barrier asymmetry, vol regime
+
+## Strategy Template (single-type event)
 
 ```js
-return ctx.markets.map((market) => {
-	const mCtx = {
-		market,
-		underlying: ctx.underlying,
-		timing: { ...ctx.timing, expiryTs: market.expiryTs },
-	};
+const et = ctx.helpers.eventPrimaryQuestionType(ctx);
+if (et === null) throw new Error("mixed-type event: use the mixed template instead");
+if (!["above", "below", "directional"].includes(et)) {
+	throw new Error(`strategy supports above/below/directional only, got ${et}`);
+}
 
-	let probs;
+// Event-scope features computed once
+const closes = ctx.underlying.klines.map((k) => k.close);
+const rsi = ctx.helpers.rsi(closes, 14);
+const emaFast = ctx.helpers.emaArray(closes, 12).at(-1);
+const emaSlow = ctx.helpers.emaArray(closes, 26).at(-1);
+const momentum = Math.sign(emaFast - emaSlow);
+
+// Per-questionType YES-prob baseline (explicit — no helper dispatch)
+const baseYesProb = (mCtx) => {
+	switch (et) {
+		case "above":       return ctx.helpers.bsAbove(mCtx);
+		case "below":       return 1 - ctx.helpers.bsAbove(mCtx);
+		case "directional": return 0.5; // directional: neutral BS baseline
+	}
+};
+
+// Log-odds adjustment preserves the 2-simplex automatically
+const logit   = (p) => Math.log(p / (1 - p));
+const sigmoid = (x) => 1 / (1 + Math.exp(-x));
+
+const THRESHOLD = 0.05;
+
+return ctx.markets.map((market) => {
 	try {
-		probs = ctx.helpers.fairProbs(mCtx);
-	} catch (err) {
+		if (market.closed || market.hoursToExpiry < 0) {
+			return { question: market.question, questionType: market.questionType, decision: "hold", reason: "closed or expired" };
+		}
+		const mCtx = { market, underlying: ctx.underlying, timing: ctx.timing };
+		const yes0 = baseYesProb(mCtx);
+		const shift = (rsi - 50) / 100 + momentum * 0.05;
+		const yes = sigmoid(logit(Math.min(Math.max(yes0, 1e-6), 1 - 1e-6)) + shift);
+		const probs = ctx.helpers.binaryProbsFromYesProb(mCtx, yes);
+		const edges = ctx.helpers.edgeFromProbs(probs, mCtx);
+		const best = edges[0].edge >= edges[1].edge ? edges[0] : edges[1];
+		if (best.edge < THRESHOLD) {
+			return { question: market.question, questionType: market.questionType, probs, decision: "hold", edge: best.edge };
+		}
 		return {
 			question: market.question,
 			questionType: market.questionType,
-			side: "hold",
-			reason: String(err),
+			probs,
+			decision: "buy",
+			side: best.label,
+			fairPrice: best.fairPrice,
+			marketPrice: best.marketPrice,
+			edge: best.edge,
 		};
+	} catch (err) {
+		return { question: market.question, decision: "hold", reason: String(err) };
 	}
-
-	return {
-		question: market.question,
-		questionType: market.questionType,
-		strike: market.strike,
-		strike2: market.strike2,
-		probs,
-		...ctx.helpers.effectiveEdgeBinary(probs, mCtx, { threshold: 0.05 }),
-	};
 });
 ```
 
-## Custom Strategies
+## Strategy Template (mixed-type event)
 
-For MACD / RSI / momentum approaches, iterate over `ctx.markets`:
+Only use this when `eventPrimaryQuestionType(ctx)` returns `null`. Dispatch per-market:
 
 ```js
-const closes = ctx.underlying.klines.map((k) => k.close);
-const ema12 = ctx.helpers.emaArray(closes, 12);
-const ema26 = ctx.helpers.emaArray(closes, 26);
-const macd = ema12.map((v, i) => v - ema26[i]);
-const signal = ctx.helpers.emaArray(macd, 9);
-const histLast = macd.at(-1) - signal.at(-1);
-const pHat = histLast > 0 ? 0.58 : 0.42;
+if (ctx.helpers.eventPrimaryQuestionType(ctx) !== null) {
+	throw new Error("use the single-type template for single-type events");
+}
+
+const THRESHOLD = 0.05;
+
+const yesProbFor = (mCtx) => {
+	switch (mCtx.market.questionType) {
+		case "above": return ctx.helpers.bsAbove(mCtx);
+		case "below": return 1 - ctx.helpers.bsAbove(mCtx);
+		case "range": return ctx.helpers.bsRange(mCtx);
+		case "hit":   return ctx.helpers.bsOneTouch(mCtx);
+		default: throw new Error(`unsupported questionType: ${mCtx.market.questionType}`);
+	}
+};
 
 return ctx.markets.map((market) => {
-	const mCtx = {
-		market,
-		underlying: ctx.underlying,
-		timing: { ...ctx.timing, expiryTs: market.expiryTs },
-	};
-	return {
-		question: market.question,
-		...ctx.helpers.effectiveEdge(pHat, mCtx, { threshold: 0.05 }),
-	};
+	try {
+		if (market.closed || market.hoursToExpiry < 0) {
+			return { question: market.question, decision: "hold", reason: "closed" };
+		}
+		const mCtx = { market, underlying: ctx.underlying, timing: ctx.timing };
+		let probs;
+		if (market.questionType === "firstHit") {
+			probs = ctx.helpers.firstHitProbabilities(mCtx);
+		} else {
+			probs = ctx.helpers.binaryProbsFromYesProb(mCtx, yesProbFor(mCtx));
+		}
+		const edges = ctx.helpers.edgeFromProbs(probs, mCtx);
+		const best = edges[0].edge >= edges[1].edge ? edges[0] : edges[1];
+		if (best.edge < THRESHOLD) {
+			return { question: market.question, questionType: market.questionType, probs, decision: "hold", edge: best.edge };
+		}
+		return { question: market.question, questionType: market.questionType, probs, decision: "buy", side: best.label, edge: best.edge, fairPrice: best.fairPrice, marketPrice: best.marketPrice };
+	} catch (err) {
+		return { question: market.question, decision: "hold", reason: String(err) };
+	}
 });
 ```
 
@@ -199,9 +299,10 @@ Always return an array (one entry per market) so the report covers all price lev
 
 - `CLAUDE_SKILL_DIR` is the absolute path to this skill's directory, available in bash and as an injectable variable.
 - Input is typically an **event slug**. Fetching happens at the event level, but analysis happens at the **market** level (`ctx.markets[]`).
+- Each run should pass through the provided `executionLogPath` so a structured JSON log is written under `.claude/polymarket-strategy-runs/`.
 - Each market has its own `hoursToExpiry`; skip (mark closed) those where it is < 0.
-- `market.questionType === 'directional'` means the question is "Up or Down" with no fixed $ strike. `directionalProbUp` returns ≈0.5; these markets will output `hold` unless orderbook imbalance is added.
-- `market.questionType === 'firstHit'` means a two-barrier race such as `Will Bitcoin hit $60k or $80k first?`. Use `fairProbs` + `effectiveEdgeBinary`, not `probYes`.
+- `market.questionType === 'directional'` means the question is "Up or Down" with no fixed $ strike. A zero-drift BS baseline is ~0.5 and useless; edge must come from microstructure + momentum. These markets output `hold` unless your adjustment pushes `yes` meaningfully off 0.5.
+- `market.questionType === 'firstHit'` means a two-barrier race such as `Will Bitcoin hit $60k or $80k first?`. Use `firstHitProbabilities`, not `bsAbove` / `bsRange` / `bsOneTouch`.
 - If `market.strike` is null (e.g. `questionType === 'unknown'`), model-based pricing cannot run — mark hold or fall back explicitly.
-- `ctx.underlying.realizedVolWarnings` is an array of strings. Non-empty = some vol windows had fetch failures (fallback σ=1 was used). `fairProbs` / `probYes` / `bsAbove` / `bsRange` / `bsOneTouch` throw when the needed vol window is listed; catch and mark hold or apply an explicit fallback.
+- `ctx.underlying.realizedVolWarnings` is an array of strings. Non-empty = some vol windows had fetch failures (fallback σ=1 was used). `vol` / `volRatio` / `bsAbove` / `bsRange` / `bsOneTouch` / `firstHitProbabilities` throw when the needed vol window is listed; catch and mark hold or apply an explicit fallback.
 - Do NOT hardcode strategy logic in bash heredocs. Always use the `run_js` tool.

@@ -2,13 +2,16 @@
 /**
  * Fetches Polymarket market data + underlying asset klines.
  * Writes ctx JSON to /tmp/polymarket-ctx-<slug>-<pid>-<rand>.json and prints
- * {"ctxPath": "..."} to stdout. Downstream callers (run_js) read ctx via ctxPath.
+ * {"ctxPath": "...", "executionLogPath": "..."} to stdout. Downstream callers
+ * (run_js) read ctx via ctxPath and persist structured execution logs via
+ * executionLogPath.
  *
  * Usage: bun run fetch.ts --slug <slug> --underlying <BTC|ETH|SOL|...>
  */
 
 import { parseArgs } from 'util'
 import { randomBytes } from 'node:crypto'
+import { resolve } from 'node:path'
 
 import { parseQuestion } from './parser'
 
@@ -265,8 +268,14 @@ async function main(): Promise<void> {
 
   const rand = randomBytes(4).toString('hex')
   const tmpPath = `/tmp/polymarket-ctx-${slug}-${process.pid}-${rand}.json`
+  const executionLogPath = resolve(
+    '.claude',
+    'polymarket-strategy-runs',
+    slug!,
+    `${Date.now()}-${process.pid}-${rand}.json`,
+  )
   await Bun.write(tmpPath, JSON.stringify(ctx))
-  process.stdout.write(JSON.stringify({ ctxPath: tmpPath }) + '\n')
+  process.stdout.write(JSON.stringify({ ctxPath: tmpPath, executionLogPath }) + '\n')
 }
 
 main().catch(err => {
