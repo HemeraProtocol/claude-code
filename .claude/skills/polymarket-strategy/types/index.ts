@@ -57,3 +57,64 @@ export type PricingOpts = {
   simSteps?: number
   seed?: number
 }
+
+// ─── ctx shape ──────────────────────────────────────────────────────────────
+
+export interface Kline {
+  timestamp: number
+  open: number
+  high: number
+  low: number
+  close: number
+  volume: number
+}
+
+export interface OutcomeData {
+  label: string
+  price: number
+  bestBid: number | null
+  bestAsk: number | null
+}
+
+export interface MarketData {
+  slug: string
+  question: string
+  questionType: QuestionType
+  kind: 'absolute' | 'directional'
+  strike: number | null
+  strike2: number | null
+  parser: QuestionParser
+  confidence: number
+  expiryDate: string
+  expiryTs: number
+  hoursToExpiry: number
+  outcomes: OutcomeData[]
+  volume: number
+  liquidity: number
+  active: boolean
+  closed: boolean
+}
+
+export interface Ctx {
+  event: { slug: string; title: string }
+  markets: MarketData[]
+  underlying: {
+    symbol: string
+    price: number
+    klines: Kline[]
+    realizedVol: Record<string, number>
+    realizedVolWarnings: string[]
+  }
+  timing: { nowTs: number }
+}
+
+// ─── adapter ────────────────────────────────────────────────────────────────
+
+export interface BuildCtxOpts {
+  underlying?: string
+  klineLimit?: number
+}
+
+export interface DataAdapter {
+  buildCtx(slug: string, opts?: BuildCtxOpts): Promise<Ctx>
+}
