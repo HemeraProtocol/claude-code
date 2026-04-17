@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { helpers } from './helpers'
+import { helpers } from '../helpers'
 
 // ─── Shared fixtures ────────────────────────────────────────────────────────
 

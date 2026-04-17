@@ -333,11 +333,16 @@ interface ExecutionLog {
 .claude/skills/polymarket-strategy/
 ├── SKILL.md                            工作流文档 + API 参考
 ├── fetch.ts                            数据获取（Gamma + CLOB + Binance）
-├── parser.ts                           问题文本规则解析器
-├── parser.test.ts                      解析器测试
-├── helpers.ts                          30+ 数学/定价/特征工具函数（624 行）
-├── helpers.test.ts                     工具函数测试（420 行）
-└── tsconfig.json                       本地 TS 配置
+├── parser.ts                           问题文本规则解析器（import types/）
+├── helpers.ts                          30+ 数学/定价/特征工具函数（import types/）
+├── tsconfig.json                       本地 TS 配置
+├── types/
+│   └── index.ts                        共享类型定义（QuestionType, VolWindow, SideInfo 等）
+├── adapters/
+│   └── .gitkeep                        Phase 1 落点：DataAdapter + PolymarketAdapter
+└── __tests__/
+    ├── parser.test.ts                  解析器测试
+    └── helpers.test.ts                 工具函数测试（420 行）
 
 src/tools/RunJsTool/
 ├── RunJsTool.ts                        工具定义 + 输入/输出 schema（148 行）
@@ -488,23 +493,17 @@ class BacktestAdapter implements DataAdapter {
 
 ## 8. 实施路线（渐进式）
 
-### Phase 0 — Repo 结构重组
+### Phase 0 — Repo 结构重组 ✅
 
-当前文件散落在 `.claude/skills/polymarket-strategy/` 和 `src/tools/RunJsTool/`，按四层架构归位：
+在 `.claude/skills/polymarket-strategy/` 内部新增子目录，不搬家（SKILL.md 依赖 `${CLAUDE_SKILL_DIR}` 路径替换）：
 
-```
-strategies/
-├── adapters/               ← Phase 1 落点：DataAdapter 接口 + 各数据源
-│   └── polymarket.ts          (从现有 fetch.ts 提取)
-├── helpers.ts              ← 单文件保持不变（runner 只接受一个模块路径）
-├── parser.ts               ← 现有 parser 迁入
-├── types/                  ← ctx schema、Signal、DataAdapter 等类型定义
-└── SKILL.md                ← 工作流文档迁入
-```
+- `types/index.ts` — 提取共享类型（QuestionType、VolWindow、SideInfo 等），消除 parser.ts 和 helpers.ts 之间的重复定义
+- `adapters/.gitkeep` — Phase 1 落点
+- `__tests__/` — 测试文件从根目录移入，import 路径更新为 `../parser`、`../helpers`
 
 RunJsTool 保留在 `src/tools/RunJsTool/` 原位（它是通用执行引擎，不专属 strategy）。
 
-交付标准：文件搬迁完成，所有现有测试通过，runner 能正常加载新路径的 helpers。
+交付标准：37 个测试全部通过，helpers.ts 中无本地 QuestionType 定义。
 
 ### Phase 1 — DataAdapter 抽象
 

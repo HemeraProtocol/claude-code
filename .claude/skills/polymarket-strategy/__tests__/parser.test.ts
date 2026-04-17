@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { parseMoneyLabel, parseQuestion } from './parser'
+import { parseMoneyLabel, parseQuestion } from '../parser'
 
 describe('parseMoneyLabel', () => {
   test('parses shorthand suffixes', () => {

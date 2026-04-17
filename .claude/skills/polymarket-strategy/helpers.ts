@@ -88,43 +88,7 @@ const YES_LIKE = new Set(['yes', 'up', 'above', 'over', 'higher', '>'])
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-type VolWindow = '15m' | '1h' | '24h' | '7d' | '30d'
-
-interface SideInfo {
-  index: 0 | 1
-  label: string
-  outcomePrice: number
-  bestBid: number | null
-  bestAsk: number | null
-}
-
-interface BarrierDistanceInfo {
-  currentPrice: number
-  lower: number
-  upper: number
-  pctToLower: number
-  pctToUpper: number
-  logDistToLower: number
-  logDistToUpper: number
-}
-
-interface BinaryEdgeInfo {
-  index: 0 | 1
-  label: string
-  fairPrice: number
-  marketPrice: number
-  edge: number
-  bestBid: number | null
-  bestAsk: number | null
-}
-
-type PricingOpts = {
-  sigmaWindow?: VolWindow
-  sigmaOverride?: number
-  simPaths?: number
-  simSteps?: number
-  seed?: number
-}
+import type { QuestionType, VolWindow, SideInfo, BarrierDistanceInfo, BinaryEdgeInfo, PricingOpts } from './types'
 
 /** mulberry32 — deterministic seeded RNG for reproducible Monte Carlo. */
 function mulberry32(seed: number): () => number {
@@ -136,8 +100,6 @@ function mulberry32(seed: number): () => number {
     return ((r ^ (r >>> 14)) >>> 0) / 4294967296
   }
 }
-
-type QuestionType = 'above' | 'below' | 'range' | 'hit' | 'directional' | 'firstHit' | 'unknown'
 
 // ─── Shared vol + time resolver ──────────────────────────────────────────────
 

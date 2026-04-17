@@ -1,21 +1,5 @@
-export type QuestionType =
-  | 'above'
-  | 'below'
-  | 'range'
-  | 'hit'
-  | 'directional'
-  | 'firstHit'
-  | 'unknown'
-
-export type QuestionParser = 'rules' | 'semantic'
-
-export interface ParsedQuestion {
-  questionType: QuestionType
-  strike: number | null
-  strike2: number | null
-  parser: QuestionParser
-  confidence?: number
-}
+export type { QuestionType, QuestionParser, ParsedQuestion } from './types'
+import type { QuestionType, QuestionParser, ParsedQuestion } from './types'
 
 const MONEY_CAPTURE = '([0-9][0-9,]*(?:\\.[0-9]+)?)([kmbt]?)'
 
