@@ -1,6 +1,6 @@
 ---
 name: polymarket-strategy
-description: Generate and execute a signal-only strategy for a Polymarket crypto event. Fetches the event plus all underlying markets, orderbooks, klines, and realized vol; runs LLM-composed strategy via run_js; returns per-market signals grouped under the event.
+description: Generate and execute a signal-only strategy for a Polymarket event (crypto or politics/tweet). Fetches markets, orderbooks, and optionally klines/vol and Twitter data; runs LLM-composed strategy via run_js; returns per-market signals grouped under the event.
 argument-hint: "<Polymarket URL 或 slug>"
 allowed-tools:
     - Bash(bun *)
@@ -12,24 +12,30 @@ user-invocable: "true"
 
 ## Workflow
 
-1. **Extract slug and underlying** from user input.
-    - Slug: last path segment of the URL (e.g. `btc-updown-5m-1766162100`), or infer from text.
-    - Underlying: detect ticker from slug/title (BTC / ETH / SOL / ...), default BTC.
+1. **Extract slug and decide data sources** from user input:
+    - Slug: last path segment of the URL (e.g. `elon-musk-of-tweets-april-18-april-20`), or infer from text.
+    - Determine which data to fetch based on slug/title/context:
+      - **Crypto price markets** (slug mentions BTC/ETH/SOL, above/below/range): add `--underlying <TICKER>`
+      - **Tweet-related markets** (slug mentions a person + tweets): add `--news-accounts <handle> --news-since <ISO> --news-until <ISO>` — infer handle and time window from slug (e.g. `elon-musk-of-tweets-april-18-april-20` → `--news-accounts elonmusk --news-since 2026-04-18T16:00:00Z --news-until 2026-04-20T16:00:00Z`)
+      - **News/policy markets**: add `--news-accounts <relevant_handles>` for key figures
+      - **Uncertain**: skip extra flags — read the output `event.description` after fetch, then re-fetch with correct flags if needed
 
-2. **Fetch market data** by running:
+2. **Fetch market data** (one call when possible):
 
     ```bash
-    bun run "${CLAUDE_SKILL_DIR}/fetch.ts" --slug <slug> --underlying <UNDERLYING> [--limit 200]
+    bun run "${CLAUDE_SKILL_DIR}/fetch.ts" --slug <slug> [--underlying <TICKER>] [--news-accounts <handles>] [--news-since <ISO>] [--news-until <ISO>] [--limit 200]
     ```
 
-    The script writes the full ctx to `/tmp/polymarket-ctx-<slug>.json` and prints `{"ctxPath":"/tmp/...","executionLogPath":"..."}` to stdout.
-    Parse stdout JSON and extract both `ctxPath` and `executionLogPath` (do **not** use ctx inline — it is too large for tool results).
-    **Do NOT inspect the file via Bash** — the schema is documented below; proceed directly to Step 3.
+    Parse stdout JSON → extract `ctxPath` and `executionLogPath`.
+    If you could not determine data sources from the slug, read `ctxPath` to inspect `event.description`, then re-fetch with the correct flags.
+    **Do NOT inspect the ctx file via Bash** unless you need to read `event.description` — the schema is documented below.
 
 3. **Compose a strategy** using helpers documented below.
-    - Prefer concise code, but do **not** sacrifice question-type-specific logic just to stay short. A 20–40 line strategy is fine if it uses baseline pricing plus feature adjustments.
+    - For **crypto events**: use BS pricing + technical indicators (see crypto template below).
+    - For **politics/tweet events**: estimate `pYes` per market from `ctx.news` data and question semantics (see politics template below). Do **not** call `eventPrimaryQuestionType` — it throws on all-unknown events.
     - ⚠️ **FORBIDDEN in `code`**: `import`, `require`, `export` — the code runs inside `new Function()` with no module system. All helpers are already in `ctx.helpers`.
     - ⚠️ **FORBIDDEN**: reading files or making network calls inside `code`. All data is in `ctx`.
+    - ⚠️ **Never hand-write epoch timestamps**. Use `new Date("2026-04-18T16:00:00Z").getTime()` instead of literal numbers — manual conversion is error-prone.
 
 4. **Execute via run_js**:
     - `code`: the strategy body
@@ -48,6 +54,7 @@ user-invocable: "true"
 ctx.event
   .slug           string          — event slug (user usually provides this)
   .title          string          — event title shown in Polymarket UI
+  .description    string|undefined — event rules text (contains time windows, accounts, resolution rules)
 
 ctx.markets[]                     — all markets under the event (one per price level)
   .slug           string
@@ -73,7 +80,7 @@ ctx.markets[]                     — all markets under the event (one per price
   .active         boolean
   .closed         boolean
 
-ctx.underlying
+ctx.underlying                    — OPTIONAL: only present when --underlying is passed (crypto markets)
   .symbol         string          — "BTC", "ETH", etc.
   .price          number          — latest 1h-close price in USD
   .klines[]                       — up to 200 hourly candles (default; use --limit to adjust)
@@ -87,6 +94,15 @@ ctx.underlying
     ['7d']        number
     ['30d']       number
   .realizedVolWarnings  string[]  — non-empty if any vol window failed; empty = all OK
+
+ctx.news                          — OPTIONAL: only present when --news-accounts is passed
+  .tweets[]                       — up to 20 most recent tweets (within time window), newest first
+    .author       string          — Twitter handle (e.g. "elonmusk")
+    .text         string          — tweet content
+    .createdAt    string          — e.g. "Tue Dec 10 07:00:30 +0000 2024"
+  .totalCount     number          — total tweets in the time window (paginated count)
+  .fetchedAt      string          — ISO timestamp of when tweets were fetched
+  .accounts       string[]        — accounts that were queried
 
 ctx.timing
   .nowTs          number          — epoch ms (captured at fetch time)
@@ -186,7 +202,7 @@ Recommended feature sets:
 - `hit`: BS baseline, distance to strike, vol regime, acceleration toward the barrier
 - `firstHit`: Monte Carlo baseline, distance to barriers, barrier asymmetry, vol regime
 
-## Strategy Template (single-type event)
+## Strategy Template: Crypto (single-type event)
 
 ```js
 const et = ctx.helpers.eventPrimaryQuestionType(ctx);
@@ -248,7 +264,7 @@ return ctx.markets.map((market) => {
 });
 ```
 
-## Strategy Template (mixed-type event)
+## Strategy Template: Crypto (mixed-type event)
 
 Only use this when `eventPrimaryQuestionType(ctx)` returns `null`. Dispatch per-market:
 
@@ -295,6 +311,55 @@ return ctx.markets.map((market) => {
 
 Always return an array (one entry per market) so the report covers all price levels under the event.
 
+## Strategy Template: Politics / Tweet events
+
+Use this when `ctx.underlying` is undefined (no crypto price data). The LLM estimates `pYes` per market based on `ctx.news` data and question semantics. Do **not** call `eventPrimaryQuestionType` — it throws on all-unknown events.
+
+```js
+// Politics/Tweet event — no BS pricing, no underlying data
+// LLM fills in probability estimates based on ctx.news analysis
+
+const THRESHOLD = 0.04;
+
+// ── Analyze ctx.news to build probability estimates ──
+// For tweet-count events: use ctx.news.totalCount vs question thresholds
+// For policy/sentiment events: use ctx.news.tweets content to estimate likelihood
+//
+// LLM: replace these with your estimates based on the data
+const estimates = {
+  // "Will Elon Musk post <40 tweets...?": ctx.news.totalCount is X, rate is Y/hr,
+  //   extrapolated total is Z → pYes = ...
+  // "Will Elon Musk post 40-64 tweets...?": same extrapolation → pYes = ...
+};
+
+return ctx.markets.map((market) => {
+  try {
+    if (market.closed || market.hoursToExpiry < 0) {
+      return { question: market.question, decision: "hold", reason: "closed or expired" };
+    }
+    const mCtx = { market, timing: ctx.timing };
+    const pYes = estimates[market.question] ?? 0.5;
+    const probs = ctx.helpers.binaryProbsFromYesProb(mCtx, pYes);
+    const edges = ctx.helpers.edgeFromProbs(probs, mCtx);
+    const best = edges[0].edge >= edges[1].edge ? edges[0] : edges[1];
+    if (best.edge < THRESHOLD) {
+      return { question: market.question, decision: "hold", edge: best.edge, pYes };
+    }
+    return {
+      question: market.question,
+      decision: "buy",
+      side: best.label,
+      fairPrice: best.fairPrice,
+      marketPrice: best.marketPrice,
+      edge: best.edge,
+      pYes,
+    };
+  } catch (err) {
+    return { question: market.question, decision: "hold", reason: String(err) };
+  }
+});
+```
+
 ## Notes
 
 - `CLAUDE_SKILL_DIR` is the absolute path to this skill's directory, available in bash and as an injectable variable.
@@ -303,6 +368,9 @@ Always return an array (one entry per market) so the report covers all price lev
 - Each market has its own `hoursToExpiry`; skip (mark closed) those where it is < 0.
 - `market.questionType === 'directional'` means the question is "Up or Down" with no fixed $ strike. A zero-drift BS baseline is ~0.5 and useless; edge must come from microstructure + momentum. These markets output `hold` unless your adjustment pushes `yes` meaningfully off 0.5.
 - `market.questionType === 'firstHit'` means a two-barrier race such as `Will Bitcoin hit $60k or $80k first?`. Use `firstHitProbabilities`, not `bsAbove` / `bsRange` / `bsOneTouch`.
-- If `market.strike` is null (e.g. `questionType === 'unknown'`), model-based pricing cannot run — mark hold or fall back explicitly.
-- `ctx.underlying.realizedVolWarnings` is an array of strings. Non-empty = some vol windows had fetch failures (fallback σ=1 was used). `vol` / `volRatio` / `bsAbove` / `bsRange` / `bsOneTouch` / `firstHitProbabilities` throw when the needed vol window is listed; catch and mark hold or apply an explicit fallback.
+- If `market.strike` is null (e.g. `questionType === 'unknown'`), BS pricing cannot run. For politics/tweet events, use the politics template with LLM-estimated probabilities instead.
+- When `ctx.underlying` is undefined, all BS pricing helpers (`bsAbove`, `bsRange`, `bsOneTouch`, `firstHitProbabilities`) and vol/distance helpers will throw. This is expected for politics events — use the politics template.
+- When `ctx.underlying` is present, `realizedVolWarnings` is an array of strings. Non-empty = some vol windows had fetch failures (fallback σ=1 was used). `vol` / `volRatio` / BS helpers throw when the needed vol window is listed; catch and mark hold or apply an explicit fallback.
+- `ctx.news` is only present when `--news-accounts` was passed. Use `ctx.news.totalCount` for tweet-count markets and `ctx.news.tweets` for content analysis.
+- `TWITTER_API_KEY` env var is required for `--news-accounts` to work.
 - Do NOT hardcode strategy logic in bash heredocs. Always use the `run_js` tool.

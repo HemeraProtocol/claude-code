@@ -108,6 +108,9 @@ function resolveVolAndTime(
   opts: { sigmaWindow?: VolWindow; sigmaOverride?: number } = {},
   callerName: string,
 ): { sigma: number; S: number; T: number } {
+  if (!ctx.underlying) {
+    throw new Error(`${callerName}: requires ctx.underlying (not available for politics/non-crypto markets)`)
+  }
   if (!opts.sigmaOverride) {
     const window = opts.sigmaWindow ?? '1h'
     const warnings: string[] = ctx.underlying?.realizedVolWarnings ?? []

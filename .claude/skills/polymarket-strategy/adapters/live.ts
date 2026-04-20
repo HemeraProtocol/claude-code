@@ -1,13 +1,13 @@
 /**
  * LiveAdapter — fetches real-time data from Gamma API, CLOB orderbooks,
- * and Binance klines, then assembles a unified Ctx.
+ * Binance klines, and Twitter (twitterapi.io), then assembles a unified Ctx.
  *
  * Named "Live" (not "Polymarket") because data sources span multiple
- * providers (Binance, future news/event APIs are not Polymarket).
+ * providers (Binance, Twitter — not all are Polymarket).
  */
 
 import { parseQuestion } from '../parser'
-import type { Ctx, BuildCtxOpts, DataAdapter, Kline } from '../types'
+import type { Ctx, BuildCtxOpts, DataAdapter, Kline, TweetData, NewsData } from '../types'
 
 // ─── Gamma / CLOB types (internal to this adapter) ──────────────────────────
 
@@ -25,11 +25,13 @@ interface GammaMarket {
   conditionId: string
   clobTokenIds: string
   startDate?: string
+  description?: string
 }
 
 interface GammaEvent {
   slug: string
   title: string
+  description?: string
   markets: GammaMarket[]
 }
 
@@ -81,14 +83,34 @@ const BARS_PER_YEAR: Record<KlineInterval, number> = {
 
 export class LiveAdapter implements DataAdapter {
   async buildCtx(slug: string, opts?: BuildCtxOpts): Promise<Ctx> {
-    const underlying = (opts?.underlying ?? 'BTC').toUpperCase()
+    const underlying = opts?.underlying?.toUpperCase()
     const klineLimit = Math.max(1, Math.min(1500, opts?.klineLimit ?? 200))
 
-    const [event, klines1h, volResult] = await Promise.all([
-      this.fetchGammaEvent(slug),
-      this.fetchBinanceKlines(underlying, '1h', klineLimit),
-      this.realizedVolByWindow(underlying),
-    ])
+    // Gamma event + orderbooks are always fetched
+    const event = await this.fetchGammaEvent(slug)
+
+    // Binance — only when underlying is specified
+    let underlyingData: Ctx['underlying'] = undefined
+    if (underlying) {
+      const [klines1h, volResult] = await Promise.all([
+        this.fetchBinanceKlines(underlying, '1h', klineLimit),
+        this.realizedVolByWindow(underlying),
+      ])
+      const currentPrice = klines1h[klines1h.length - 1]?.close ?? 0
+      underlyingData = {
+        symbol: underlying,
+        price: currentPrice,
+        klines: klines1h,
+        realizedVol: volResult.vols,
+        realizedVolWarnings: volResult.warnings,
+      }
+    }
+
+    // Twitter — only when newsAccounts is specified
+    let newsData: NewsData | undefined = undefined
+    if (opts?.newsAccounts?.length) {
+      newsData = await this.fetchTweets(opts.newsAccounts, opts.newsSince, opts.newsUntil)
+    }
 
     // Fetch orderbooks for all markets in parallel
     const parsedMarkets = event.markets.map(m => ({
@@ -136,18 +158,11 @@ export class LiveAdapter implements DataAdapter {
       }
     })
 
-    const currentPrice = klines1h[klines1h.length - 1]?.close ?? 0
-
     return {
-      event: { slug: event.slug, title: event.title },
+      event: { slug: event.slug, title: event.title, description: event.description },
       markets,
-      underlying: {
-        symbol: underlying,
-        price: currentPrice,
-        klines: klines1h,
-        realizedVol: volResult.vols,
-        realizedVolWarnings: volResult.warnings,
-      },
+      underlying: underlyingData,
+      news: newsData,
       timing: { nowTs: Date.now() },
     }
   }
@@ -219,5 +234,59 @@ export class LiveAdapter implements DataAdapter {
       }),
     )
     return { vols, warnings }
+  }
+
+  private async fetchTweets(
+    accounts: string[],
+    since?: string,
+    until?: string,
+  ): Promise<NewsData> {
+    const apiKey = process.env.TWITTER_API_KEY
+    if (!apiKey) throw new Error('fetchTweets: TWITTER_API_KEY env var is required')
+
+    const sinceTs = since ? new Date(since).getTime() : 0
+    const untilTs = until ? new Date(until).getTime() : Infinity
+    const recentTweets: TweetData[] = []
+    let totalCount = 0
+
+    for (const userName of accounts) {
+      let cursor = ''
+      let done = false
+      while (!done) {
+        const url = `https://api.twitterapi.io/twitter/user/last_tweets?userName=${encodeURIComponent(userName)}&cursor=${encodeURIComponent(cursor)}`
+        const res = await fetch(url, { headers: { 'X-API-Key': apiKey } })
+        if (!res.ok) {
+          process.stderr.write(`fetchTweets: ${userName} returned ${res.status}, skipping\n`)
+          break
+        }
+        const raw = await res.json() as {
+          data?: { tweets?: Array<{ id: string; text: string; createdAt: string; author: { userName: string } }> }
+          has_next_page?: boolean
+          next_cursor?: string
+        }
+        for (const t of raw.data?.tweets ?? []) {
+          const ts = new Date(t.createdAt).getTime()
+          if (ts < sinceTs) { done = true; break }
+          if (ts > untilTs) continue
+          totalCount++
+          if (recentTweets.length < 20) {
+            recentTweets.push({
+              author: t.author.userName,
+              text: t.text,
+              createdAt: t.createdAt,
+            })
+          }
+        }
+        if (!raw.has_next_page || done) break
+        cursor = raw.next_cursor ?? ''
+      }
+    }
+
+    return {
+      tweets: recentTweets,
+      totalCount,
+      fetchedAt: new Date().toISOString(),
+      accounts,
+    }
   }
 }

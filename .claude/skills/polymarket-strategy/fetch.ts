@@ -22,6 +22,9 @@ const { values } = parseArgs({
     slug: { type: 'string' },
     underlying: { type: 'string' },
     limit: { type: 'string' },
+    'news-accounts': { type: 'string' },
+    'news-since': { type: 'string' },
+    'news-until': { type: 'string' },
   },
   strict: true,
 })
@@ -42,8 +45,11 @@ if (!/^[a-z0-9-]+$/i.test(slug)) {
 
 const adapter = new LiveAdapter()
 const ctx = await adapter.buildCtx(slug, {
-  underlying: values.underlying ?? 'BTC',
+  underlying: values.underlying || undefined,
   klineLimit: Number(values.limit ?? '200') || 200,
+  newsAccounts: values['news-accounts']?.split(',').map(s => s.trim()).filter(Boolean),
+  newsSince: values['news-since'],
+  newsUntil: values['news-until'],
 })
 
 // ─── Write output ────────────────────────────────────────────────────────────

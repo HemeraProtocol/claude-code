@@ -95,16 +95,30 @@ export interface MarketData {
   closed: boolean
 }
 
+export interface TweetData {
+  author: string
+  text: string
+  createdAt: string
+}
+
+export interface NewsData {
+  tweets: TweetData[]
+  totalCount: number
+  fetchedAt: string
+  accounts: string[]
+}
+
 export interface Ctx {
-  event: { slug: string; title: string }
+  event: { slug: string; title: string; description?: string }
   markets: MarketData[]
-  underlying: {
+  underlying?: {
     symbol: string
     price: number
     klines: Kline[]
     realizedVol: Record<string, number>
     realizedVolWarnings: string[]
   }
+  news?: NewsData
   timing: { nowTs: number }
 }
 
@@ -113,6 +127,9 @@ export interface Ctx {
 export interface BuildCtxOpts {
   underlying?: string
   klineLimit?: number
+  newsAccounts?: string[]
+  newsSince?: string
+  newsUntil?: string
 }
 
 export interface DataAdapter {

@@ -116,8 +116,18 @@ describe('LiveAdapter', () => {
     const adapter = new LiveAdapter()
     const ctx = await adapter.buildCtx('test-event')
 
-    expect(ctx.underlying.symbol).toBe('BTC')
+    expect(ctx.underlying).toBeUndefined()
+    expect(ctx.news).toBeUndefined()
     expect(ctx.event.slug).toBe('test-event')
+  })
+
+  test('buildCtx populates underlying when underlying opt is passed', async () => {
+    const { LiveAdapter } = await import('../adapters/live')
+    const adapter = new LiveAdapter()
+    const ctx = await adapter.buildCtx('test-event', { underlying: 'BTC' })
+
+    expect(ctx.underlying).toBeDefined()
+    expect(ctx.underlying!.symbol).toBe('BTC')
   })
 
   test('throws on Gamma 404', async () => {

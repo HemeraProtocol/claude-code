@@ -417,3 +417,60 @@ describe('distanceToBarriers', () => {
     })
   })
 })
+
+// ─── No-underlying guard (politics markets) ──────────────────────────────────
+
+describe('no-underlying guard', () => {
+  function makePoliticsCtx() {
+    return {
+      market: {
+        questionType: 'unknown',
+        strike: null,
+        expiryTs: 86_400_000,
+        outcomes: [
+          { label: 'Yes', price: 0.7, bestAsk: 0.71, bestBid: 0.69 },
+          { label: 'No', price: 0.3, bestAsk: 0.31, bestBid: 0.29 },
+        ],
+      },
+      timing: { nowTs: 0 },
+    }
+  }
+
+  test('bsAbove throws when ctx.underlying is undefined', () => {
+    expect(() => helpers.bsAbove(makePoliticsCtx())).toThrow('requires ctx.underlying')
+  })
+
+  test('bsRange throws when ctx.underlying is undefined', () => {
+    const ctx = makePoliticsCtx()
+    ;(ctx.market as any).strike = 90
+    ;(ctx.market as any).strike2 = 110
+    expect(() => helpers.bsRange(ctx)).toThrow('requires ctx.underlying')
+  })
+
+  test('bsOneTouch throws when ctx.underlying is undefined', () => {
+    const ctx = makePoliticsCtx()
+    ;(ctx.market as any).strike = 100
+    expect(() => helpers.bsOneTouch(ctx)).toThrow('requires ctx.underlying')
+  })
+
+  test('edgeFromProbs works without underlying', () => {
+    const ctx = makePoliticsCtx()
+    const result = helpers.edgeFromProbs([0.8, 0.2], ctx)
+    expect(result[0].fairPrice).toBe(0.8)
+    expect(result[1].fairPrice).toBe(0.2)
+  })
+
+  test('outcomeSides works without underlying', () => {
+    const ctx = makePoliticsCtx()
+    const [s0, s1] = helpers.outcomeSides(ctx)
+    expect(s0.label).toBe('Yes')
+    expect(s1.label).toBe('No')
+  })
+
+  test('binaryProbsFromYesProb works without underlying', () => {
+    const ctx = makePoliticsCtx()
+    const probs = helpers.binaryProbsFromYesProb(ctx, 0.75)
+    expect(probs[0]).toBeCloseTo(0.75)
+    expect(probs[1]).toBeCloseTo(0.25)
+  })
+})
