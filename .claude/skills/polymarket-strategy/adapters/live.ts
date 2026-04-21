@@ -1,9 +1,9 @@
 /**
  * LiveAdapter — fetches real-time data from Gamma API, CLOB orderbooks,
- * Binance klines, and Twitter (twitterapi.io), then assembles a unified Ctx.
+ * Binance klines, and xtracker (settlement source), then assembles a unified Ctx.
  *
  * Named "Live" (not "Polymarket") because data sources span multiple
- * providers (Binance, Twitter — not all are Polymarket).
+ * providers (Binance, xtracker, twitterapi.io — not all are Polymarket).
  */
 
 import { parseQuestion } from '../parser'
@@ -106,10 +106,10 @@ export class LiveAdapter implements DataAdapter {
       }
     }
 
-    // Twitter — only when newsAccounts is specified
+    // News — only when newsAccounts is specified (xtracker = default, settlement source)
     let newsData: NewsData | undefined = undefined
     if (opts?.newsAccounts?.length) {
-      newsData = await this.fetchTweets(opts.newsAccounts, opts.newsSince, opts.newsUntil)
+      newsData = await this.fetchXtrackerPosts(opts.newsAccounts, opts.newsSince, opts.newsUntil)
     }
 
     // Fetch orderbooks for all markets in parallel
@@ -234,6 +234,57 @@ export class LiveAdapter implements DataAdapter {
       }),
     )
     return { vols, warnings }
+  }
+
+  private async fetchXtrackerPosts(
+    accounts: string[],
+    since?: string,
+    until?: string,
+  ): Promise<NewsData> {
+    const sinceTs = since ? new Date(since).getTime() : 0
+    const untilTs = until ? new Date(until).getTime() : Infinity
+    // xtracker uses date-level params; we do precise time filtering client-side
+    const startDate = since ? since.slice(0, 10) : new Date(Date.now() - 7 * 86400_000).toISOString().slice(0, 10)
+    const endDate = until ? until.slice(0, 10) : new Date().toISOString().slice(0, 10)
+
+    const recentTweets: TweetData[] = []
+    let totalCount = 0
+
+    for (const handle of accounts) {
+      const url = `https://xtracker.polymarket.com/api/users/${encodeURIComponent(handle)}/posts?startDate=${startDate}&endDate=${endDate}`
+      const res = await fetch(url)
+      if (!res.ok) {
+        process.stderr.write(`fetchXtrackerPosts: ${handle} returned ${res.status}, skipping\n`)
+        continue
+      }
+      const raw = await res.json() as {
+        success: boolean
+        data?: Array<{ content: string; createdAt: string; [k: string]: unknown }>
+      }
+      if (!raw.success || !raw.data) {
+        process.stderr.write(`fetchXtrackerPosts: ${handle} returned success=false, skipping\n`)
+        continue
+      }
+      for (const post of raw.data) {
+        const ts = new Date(post.createdAt).getTime()
+        if (ts < sinceTs || ts > untilTs) continue
+        totalCount++
+        if (recentTweets.length < 20) {
+          recentTweets.push({
+            author: handle,
+            text: post.content,
+            createdAt: post.createdAt,
+          })
+        }
+      }
+    }
+
+    return {
+      tweets: recentTweets,
+      totalCount,
+      fetchedAt: new Date().toISOString(),
+      accounts,
+    }
   }
 
   private async fetchTweets(

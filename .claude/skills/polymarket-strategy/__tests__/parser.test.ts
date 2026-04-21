@@ -50,6 +50,30 @@ describe('parseQuestion', () => {
     })
   })
 
+  test('parses count-range markets', () => {
+    expect(parseQuestion('Will Elon Musk post 80-99 tweets from April 17 to April 24, 2026?')).toEqual({
+      questionType: 'count',
+      strike: 80,
+      strike2: 99,
+      parser: 'rules',
+      confidence: 1,
+    })
+  })
+
+  test('parses count open-ended (N+) markets', () => {
+    expect(parseQuestion('Will Elon Musk post 580+ tweets from April 17 to April 24, 2026?')).toEqual({
+      questionType: 'count',
+      strike: 580,
+      strike2: null,
+      parser: 'rules',
+      confidence: 1,
+    })
+  })
+
+  test('parses count with en-dash separator', () => {
+    expect(parseQuestion('Will Elon Musk post 40–59 tweets from April 17 to April 24?').questionType).toBe('count')
+  })
+
   test('marks unsupported wording as unknown', () => {
     expect(parseQuestion('Will Bitcoin close in the green this week?').questionType).toBe('unknown')
   })

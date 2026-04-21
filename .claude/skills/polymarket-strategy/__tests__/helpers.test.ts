@@ -420,6 +420,94 @@ describe('distanceToBarriers', () => {
 
 // ─── No-underlying guard (politics markets) ──────────────────────────────────
 
+// ─── Count model helpers ──────────��──────────────────────────────────────────
+
+describe('countModel', () => {
+  const hr = 3_600_000
+
+  test('projects total from observed rate', () => {
+    // 100 tweets in 50 hours, 50 hours remaining
+    const model = helpers.countModel({
+      observed: 100,
+      windowStart: 0,
+      windowEnd: 100 * hr,
+      nowTs: 50 * hr,
+    })
+    expect(model.rate).toBeCloseTo(2, 8) // 100/50
+    expect(model.mu).toBeCloseTo(200, 8) // 100 + 2*50
+    expect(model.elapsed).toBeCloseTo(50, 8)
+    expect(model.remaining).toBeCloseTo(50, 8)
+    expect(model.sigma).toBeGreaterThan(0)
+  })
+
+  test('sigma includes both Poisson and regime components', () => {
+    const model = helpers.countModel({
+      observed: 100,
+      windowStart: 0,
+      windowEnd: 100 * hr,
+      nowTs: 50 * hr,
+      regimeUncertainty: 0.1,
+    })
+    const poissonSigma = Math.sqrt(100) // sqrt of projected additional
+    const regimeNoise = 200 * 0.1 // mu * 0.1
+    const expected = Math.sqrt(poissonSigma ** 2 + regimeNoise ** 2)
+    expect(model.sigma).toBeCloseTo(expected, 6)
+  })
+
+  test('throws when nowTs is before windowStart', () => {
+    expect(() =>
+      helpers.countModel({
+        observed: 10,
+        windowStart: 100 * hr,
+        windowEnd: 200 * hr,
+        nowTs: 50 * hr,
+      }),
+    ).toThrow(/windowStart/)
+  })
+})
+
+describe('countRangeProb', () => {
+  const hr = 3_600_000
+
+  test('probabilities across all bins sum to ~1', () => {
+    const model = helpers.countModel({
+      observed: 109,
+      windowStart: 0,
+      windowEnd: 168 * hr,
+      nowTs: 85.7 * hr,
+    })
+    // bins: 0-19, 20-39, ..., 560-579, 580+
+    let total = 0
+    for (let lo = 0; lo < 580; lo += 20) {
+      total += helpers.countRangeProb(model, lo, lo + 19)
+    }
+    total += helpers.countRangeProb(model, 580, null) // open-ended
+    expect(total).toBeCloseTo(1, 2)
+  })
+
+  test('open-ended (hi=null) captures upper tail', () => {
+    const model = helpers.countModel({
+      observed: 100,
+      windowStart: 0,
+      windowEnd: 100 * hr,
+      nowTs: 50 * hr,
+    })
+    // P(X >= 0) should be ~1
+    expect(helpers.countRangeProb(model, 0, null)).toBeCloseTo(1, 4)
+  })
+
+  test('returns 0 for impossibly high range', () => {
+    const model = helpers.countModel({
+      observed: 10,
+      windowStart: 0,
+      windowEnd: 100 * hr,
+      nowTs: 90 * hr, // near end, only 10 remaining hours
+    })
+    // rate ~0.11/hr, mu ~11.1, asking for 10000-20000 range
+    expect(helpers.countRangeProb(model, 10000, 20000)).toBeCloseTo(0, 8)
+  })
+})
+
 describe('no-underlying guard', () => {
   function makePoliticsCtx() {
     return {
