@@ -35,5 +35,5 @@ export function renderRunJsHeader(
 export function renderRunJsMessage(
   input: RunJsDisplayInput,
 ): string {
-  return `${renderRunJsHeader(input)}\n${getRunJsCode(input)}`
+  return `${renderRunJsHeader(input)}\n\n${getRunJsCode(input)}`
 }

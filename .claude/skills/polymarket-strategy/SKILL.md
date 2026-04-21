@@ -12,41 +12,47 @@ user-invocable: "true"
 
 ## Workflow
 
-1. **Extract slug and decide data sources** from user input:
+1. **Extract slug** from user input:
     - Slug: last path segment of the URL (e.g. `elon-musk-of-tweets-april-18-april-20`), or infer from text.
-    - Determine which data to fetch based on slug/title/context:
-      - **Crypto price markets** (slug mentions BTC/ETH/SOL, above/below/range): add `--underlying <TICKER>`
-      - **Tweet-related markets** (slug mentions a person + tweets): add `--news-accounts <handle> --news-since <ISO> --news-until <ISO>` — infer handle and time window from slug (e.g. `elon-musk-of-tweets-april-18-april-20` → `--news-accounts elonmusk --news-since 2026-04-18T16:00:00Z --news-until 2026-04-20T16:00:00Z`)
-      - **News/policy markets**: add `--news-accounts <relevant_handles>` for key figures
-      - **Uncertain**: skip extra flags — read the output `event.description` after fetch, then re-fetch with correct flags if needed
 
-2. **Fetch market data** (one call when possible):
+2. **Fetch event detail** (first call — markets only, no extra data):
+
+    ```bash
+    bun run "${CLAUDE_SKILL_DIR}/fetch.ts" --slug <slug>
+    ```
+
+    Parse stdout JSON → extract `ctxPath` and `executionLogPath`.
+    Read `ctxPath` to inspect `event.title` and `event.description` — these contain resolution rules, Twitter accounts, time windows, and other critical info needed to decide what additional data to fetch.
+
+3. **Determine data sources from description**, then re-fetch with correct flags:
+    - **Crypto price markets** (description mentions BTC/ETH/SOL price targets): add `--underlying <TICKER>`
+    - **Tweet-count/activity markets** (description specifies a Twitter account + time window): add `--news-accounts <handle> --news-since <ISO> --news-until <ISO>` — extract the exact handle and UTC time window from description text
+    - **News/policy markets** (description references political figures or policy events): add `--news-accounts <relevant_handles>`
+    - **Pure prediction markets** (no external data needed): skip re-fetch, use ctx from step 2 directly
 
     ```bash
     bun run "${CLAUDE_SKILL_DIR}/fetch.ts" --slug <slug> [--underlying <TICKER>] [--news-accounts <handles>] [--news-since <ISO>] [--news-until <ISO>] [--limit 200]
     ```
 
-    Parse stdout JSON → extract `ctxPath` and `executionLogPath`.
-    If you could not determine data sources from the slug, read `ctxPath` to inspect `event.description`, then re-fetch with the correct flags.
-    **Do NOT inspect the ctx file via Bash** unless you need to read `event.description` — the schema is documented below.
+    This second call re-fetches fresh market prices + the requested additional data. Use the new `ctxPath` and `executionLogPath` from this call for subsequent steps.
 
-3. **Compose a strategy** using helpers documented below.
+4. **Compose a strategy** using helpers documented below.
     - For **crypto events**: use BS pricing + technical indicators (see crypto template below).
     - For **politics/tweet events**: estimate `pYes` per market from `ctx.news` data and question semantics (see politics template below). Do **not** call `eventPrimaryQuestionType` — it throws on all-unknown events.
     - ⚠️ **FORBIDDEN in `code`**: `import`, `require`, `export` — the code runs inside `new Function()` with no module system. All helpers are already in `ctx.helpers`.
     - ⚠️ **FORBIDDEN**: reading files or making network calls inside `code`. All data is in `ctx`.
     - ⚠️ **Never hand-write epoch timestamps**. Use `new Date("2026-04-18T16:00:00Z").getTime()` instead of literal numbers — manual conversion is error-prone.
 
-4. **Execute via run_js**:
+5. **Execute via run_js**:
     - `code`: the strategy body
-    - `ctxPath`: the path from step 2 (e.g. `/tmp/polymarket-ctx-<slug>.json`)
+    - `ctxPath`: the path from step 2 or 3 (e.g. `/tmp/polymarket-ctx-<slug>.json`)
     - `ctx`: `{}` (leave empty — ctxPath takes priority)
     - `helpersModulePath`: `"${CLAUDE_SKILL_DIR}/helpers.ts"`
-    - `executionLogPath`: the path from step 2; this records code/result provenance for later evaluation. Must be under the current working directory.
+    - `executionLogPath`: the path from step 2 or 3; this records code/result provenance for later evaluation. Must be under the current working directory.
     - `resultShape`: `"strategy-array"` — enforces that `result` is an array of `{question, decision}` objects; extra fields are allowed.
     - `timeoutMs`: 5000
 
-5. **Report in Chinese**: 先写 event 标题，再逐个 market 汇报：市场问题, 到期时间, 盘口价格, 模型估计概率, 决策, 一句话原因, edge 大小。
+6. **Report in Chinese**: 先写 event 标题，再逐个 market 汇报：市场问题, 到期时间, 盘口价格, 模型估计概率, 决策, 一句话原因, edge 大小。
 
 ## ctx Schema
 
