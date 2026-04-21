@@ -88,7 +88,7 @@ const YES_LIKE = new Set(['yes', 'up', 'above', 'over', 'higher', '>'])
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-import type { QuestionType, VolWindow, SideInfo, BarrierDistanceInfo, BinaryEdgeInfo, PricingOpts } from './types'
+import type { QuestionType, VolWindow, SideInfo, BarrierDistanceInfo, BinaryEdgeInfo, PricingOpts, CountModel } from './types'
 
 /** mulberry32 — deterministic seeded RNG for reproducible Monte Carlo. */
 function mulberry32(seed: number): () => number {
@@ -546,6 +546,51 @@ function edgeFromProbs(
   return candidates
 }
 
+// ─── Count model (Poisson → normal projection) ─────────────────────────────
+
+/**
+ * Build a count projection model from observed data.
+ * Assumes a Poisson counting process: observed count in elapsed time,
+ * projected forward over remaining time with normal approximation.
+ */
+function countModel(opts: {
+  observed: number
+  windowStart: number
+  windowEnd: number
+  nowTs: number
+  regimeUncertainty?: number
+}): CountModel {
+  const { observed, windowStart, windowEnd, nowTs } = opts
+  const regimeUncertainty = opts.regimeUncertainty ?? 0.08
+  const elapsed = (nowTs - windowStart) / 3_600_000
+  const remaining = (windowEnd - nowTs) / 3_600_000
+  if (elapsed <= 0) {
+    throw new Error('countModel: nowTs must be after windowStart')
+  }
+  const rate = observed / elapsed
+  const projectedAdditional = rate * remaining
+  const mu = observed + projectedAdditional
+  const poissonSigma = Math.sqrt(projectedAdditional)
+  const regimeNoise = mu * regimeUncertainty
+  const sigma = Math.sqrt(poissonSigma * poissonSigma + regimeNoise * regimeNoise)
+  return { mu, sigma, rate, elapsed, remaining }
+}
+
+/**
+ * P(lo ≤ X ≤ hi) under the normal approximation from countModel.
+ * Applies continuity correction: lo - 0.5 and hi + 0.5.
+ * If hi is null, computes P(X ≥ lo) (open-ended upper bound).
+ */
+function countRangeProb(model: CountModel, lo: number, hi: number | null): number {
+  const { mu, sigma } = model
+  if (sigma <= 0) return (mu >= lo && (hi === null || mu <= hi)) ? 1 : 0
+  const loAdj = lo - 0.5
+  const hiAdj = hi === null ? Infinity : hi + 0.5
+  const pLo = normCDF((loAdj - mu) / sigma)
+  const pHi = hiAdj === Infinity ? 1 : normCDF((hiAdj - mu) / sigma)
+  return Math.max(0, pHi - pLo)
+}
+
 // ─── Export ──────────────────────────────────────────────────────────────────
 
 export const helpers = {
@@ -583,6 +628,9 @@ export const helpers = {
   outcomeBids,
   spreadByOutcome,
   noArbResidual,
+  // count model
+  countModel,
+  countRangeProb,
   // execution helpers
   edgeFromProbs,
 }

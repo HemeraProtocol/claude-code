@@ -8,7 +8,16 @@ export type QuestionType =
   | 'hit'
   | 'directional'
   | 'firstHit'
+  | 'count'
   | 'unknown'
+
+export interface CountModel {
+  mu: number
+  sigma: number
+  rate: number
+  elapsed: number
+  remaining: number
+}
 
 export type QuestionParser = 'rules' | 'semantic'
 

@@ -3,6 +3,7 @@ name: polymarket-strategy
 description: Generate and execute a signal-only strategy for a Polymarket event (crypto or politics/tweet). Fetches markets, orderbooks, and optionally klines/vol and Twitter data; runs LLM-composed strategy via run_js; returns per-market signals grouped under the event.
 argument-hint: "<Polymarket URL 或 slug>"
 allowed-tools:
+    - Read
     - Bash(bun *)
     - run_js
 user-invocable: "true"
@@ -65,12 +66,13 @@ ctx.event
 ctx.markets[]                     — all markets under the event (one per price level)
   .slug           string
   .question       string          — e.g. "Will BTC be above $95,000 on Jan 1?"
-  .questionType   'above'|'below'|'range'|'hit'|'directional'|'firstHit'|'unknown'
+  .questionType   'above'|'below'|'range'|'hit'|'directional'|'firstHit'|'count'|'unknown'
                                   — semantic type parsed from question text
+                                  — 'count' = tweet/post count markets ("post 80-99 tweets")
   .kind           'absolute'|'directional'
                                   — legacy field; use questionType for new code
   .strike         number|null     — lower (or only) strike; null for directional
-  .strike2        number|null     — upper strike for range/firstHit markets; null otherwise
+  .strike2        number|null     — upper strike for range/firstHit/count markets; null for count "N+" (open-ended)
   .parser         'rules'         — current parser implementation
   .confidence     number          — parser confidence (1 for rules matches, 0 for unknown)
   .expiryDate     string          — ISO date
@@ -178,6 +180,19 @@ All scalar baselines return the **YES-side** probability. To get a valid 2-simpl
   **Price-domain** residual `bid_i - (1 - ask_{!i})`. Positive = potential arbitrage against the opposite quote.
   ⚠️ This is NOT orderbook pressure / flow imbalance. Do **not** add directly to probabilities.
 
+### Count model helpers (for tweet/post count markets)
+
+- `countModel({ observed, windowStart, windowEnd, nowTs, regimeUncertainty? })` → `CountModel`
+  Builds a Poisson→normal projection: `{ mu, sigma, rate, elapsed, remaining }`.
+  - `observed`: total count so far (use `ctx.news.totalCount`)
+  - `windowStart`/`windowEnd`: epoch ms of the counting window (from event description)
+  - `nowTs`: `ctx.timing.nowTs`
+  - `regimeUncertainty`: optional, default `0.08` (8% of mu added as extra sigma)
+
+- `countRangeProb(model, lo, hi)` → `number`
+  P(lo ≤ X ≤ hi) under the normal approximation. Uses continuity correction (lo−0.5, hi+0.5).
+  Pass `hi = null` for open-ended ("N+ tweets") markets.
+
 ### Execution helpers
 
 - `edgeFromProbs(probs, mCtx)` → `[edge0, edge1]`
@@ -207,6 +222,7 @@ Recommended feature sets:
 - `range`: BS baseline, distance to range midpoint, vol regime, trend strength
 - `hit`: BS baseline, distance to strike, vol regime, acceleration toward the barrier
 - `firstHit`: Monte Carlo baseline, distance to barriers, barrier asymmetry, vol regime
+- `count`: countModel + countRangeProb baseline, no underlying needed — uses ctx.news.totalCount
 
 ## Strategy Template: Crypto (single-type event)
 
@@ -322,21 +338,22 @@ Always return an array (one entry per market) so the report covers all price lev
 Use this when `ctx.underlying` is undefined (no crypto price data). The LLM estimates `pYes` per market based on `ctx.news` data and question semantics. Do **not** call `eventPrimaryQuestionType` — it throws on all-unknown events.
 
 ```js
-// Politics/Tweet event — no BS pricing, no underlying data
-// LLM fills in probability estimates based on ctx.news analysis
+// Tweet-count event — uses countModel + countRangeProb helpers
+// LLM: extract windowStart/windowEnd from event description
 
 const THRESHOLD = 0.04;
 
-// ── Analyze ctx.news to build probability estimates ──
-// For tweet-count events: use ctx.news.totalCount vs question thresholds
-// For policy/sentiment events: use ctx.news.tweets content to estimate likelihood
-//
-// LLM: replace these with your estimates based on the data
-const estimates = {
-  // "Will Elon Musk post <40 tweets...?": ctx.news.totalCount is X, rate is Y/hr,
-  //   extrapolated total is Z → pYes = ...
-  // "Will Elon Musk post 40-64 tweets...?": same extrapolation → pYes = ...
-};
+// ── Build count model from ctx.news ──
+// LLM: replace these timestamps with actual values from event description
+const windowStart = new Date("2026-04-17T16:00:00Z").getTime();
+const windowEnd   = new Date("2026-04-24T16:00:00Z").getTime();
+
+const model = ctx.helpers.countModel({
+  observed: ctx.news.totalCount,
+  windowStart,
+  windowEnd,
+  nowTs: ctx.timing.nowTs,
+});
 
 return ctx.markets.map((market) => {
   try {
@@ -344,7 +361,15 @@ return ctx.markets.map((market) => {
       return { question: market.question, decision: "hold", reason: "closed or expired" };
     }
     const mCtx = { market, timing: ctx.timing };
-    const pYes = estimates[market.question] ?? 0.5;
+
+    // Use parser-extracted strike/strike2 for count markets
+    let pYes;
+    if (market.questionType === "count" && market.strike !== null) {
+      pYes = ctx.helpers.countRangeProb(model, market.strike, market.strike2);
+    } else {
+      pYes = 0.5; // fallback for unrecognized questions
+    }
+
     const probs = ctx.helpers.binaryProbsFromYesProb(mCtx, pYes);
     const edges = ctx.helpers.edgeFromProbs(probs, mCtx);
     const best = edges[0].edge >= edges[1].edge ? edges[0] : edges[1];
@@ -377,6 +402,6 @@ return ctx.markets.map((market) => {
 - If `market.strike` is null (e.g. `questionType === 'unknown'`), BS pricing cannot run. For politics/tweet events, use the politics template with LLM-estimated probabilities instead.
 - When `ctx.underlying` is undefined, all BS pricing helpers (`bsAbove`, `bsRange`, `bsOneTouch`, `firstHitProbabilities`) and vol/distance helpers will throw. This is expected for politics events — use the politics template.
 - When `ctx.underlying` is present, `realizedVolWarnings` is an array of strings. Non-empty = some vol windows had fetch failures (fallback σ=1 was used). `vol` / `volRatio` / BS helpers throw when the needed vol window is listed; catch and mark hold or apply an explicit fallback.
-- `ctx.news` is only present when `--news-accounts` was passed. Use `ctx.news.totalCount` for tweet-count markets and `ctx.news.tweets` for content analysis.
-- `TWITTER_API_KEY` env var is required for `--news-accounts` to work.
+- `ctx.news` is only present when `--news-accounts` was passed. Data comes from **xtracker.polymarket.com** (the settlement source, includes deleted posts). Use `ctx.news.totalCount` for tweet-count markets and `ctx.news.tweets` for content analysis. No API key required.
+- `TWITTER_API_KEY` env var is only needed if you switch to the twitterapi.io fallback (not used by default).
 - Do NOT hardcode strategy logic in bash heredocs. Always use the `run_js` tool.
