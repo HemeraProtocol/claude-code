@@ -1,0 +1,233 @@
+{
+  "schemaVersion": 2,
+  "timestamp": "2026-04-17T09:02:56.423Z",
+  "status": "success",
+  "ctxPath": "/tmp/polymarket-ctx-what-price-will-ethereum-hit-in-april-2026-38669-122f65e7.json",
+  "ctxHash": "3910308498466999209",
+  "helpersModulePath": "/Users/linxuan/Desktop/claude_code_research/claude-code/.claude/skills/polymarket-strategy/helpers.ts",
+  "helpersHash": "18148763106966049132",
+  "gitCommit": "b67c8f2d96844cfe3d1bc8577af9c8ea9fcbb17b",
+  "code": "\nconst et = ctx.helpers.eventPrimaryQuestionType(ctx);\n\nconst closes = ctx.underlying.klines.map((k) => k.close);\nconst rsi14 = ctx.helpers.rsi(closes, 14);\nconst emaFast = ctx.helpers.emaArray(closes, 12).at(-1);\nconst emaSlow = ctx.helpers.emaArray(closes, 26).at(-1);\nconst macroTrend = emaFast > emaSlow ? 1 : -1;\nconst volRatio = ctx.helpers.volRatio(ctx, \"1h\", \"24h\");\n\nconst logit   = (p) => Math.log(Math.min(Math.max(p, 1e-6), 1 - 1e-6) / (1 - Math.min(Math.max(p, 1e-6), 1 - 1e-6)));\nconst sigmoid = (x) => 1 / (1 + Math.exp(-x));\n\nconst THRESHOLD = 0.04;\n\nconst baseYesProb = (mCtx, questionType) => {\n  switch (questionType) {\n    case \"above\":  return ctx.helpers.bsAbove(mCtx);\n    case \"below\":  return 1 - ctx.helpers.bsAbove(mCtx);\n    case \"hit\":    return ctx.helpers.bsOneTouch(mCtx);\n    case \"range\":  return ctx.helpers.bsRange(mCtx);\n    case \"firstHit\": return null;\n    default: throw new Error(\"unsupported questionType: \" + questionType);\n  }\n};\n\nreturn ctx.markets.map((market) => {\n  try {\n    if (market.closed || market.hoursToExpiry < 0) {\n      return { question: market.question, questionType: market.questionType, decision: \"hold\", reason: \"closed or expired\" };\n    }\n\n    const mCtx = { market, underlying: ctx.underlying, timing: ctx.timing };\n    let probs;\n\n    if (market.questionType === \"firstHit\") {\n      probs = ctx.helpers.firstHitProbabilities(mCtx, { seed: 42 });\n    } else if (market.questionType === \"unknown\" || market.strike === null) {\n      return { question: market.question, questionType: market.questionType, decision: \"hold\", reason: \"unknown type or null strike\" };\n    } else {\n      const base = baseYesProb(mCtx, market.questionType);\n      const dist = ctx.helpers.distanceToStrike(mCtx);\n      const rsiShift = (rsi14 - 50) / 200;\n      const trendShift = macroTrend * 0.04;\n      const volShift = (volRatio > 1.2) ? 0.02 : (volRatio < 0.8) ? -0.02 : 0;\n      const distShift = market.questionType === \"hit\"\n        ? Math.sign(-dist) * Math.min(Math.abs(dist) * 0.1, 0.03)\n        : 0;\n      const shift = rsiShift + trendShift + volShift + distShift;\n      const yesAdj = sigmoid(logit(base) + shift);\n      probs = ctx.helpers.binaryProbsFromYesProb(mCtx, yesAdj);\n    }\n\n    const edges = ctx.helpers.edgeFromProbs(probs, mCtx);\n    const best = edges[0].edge >= edges[1].edge ? edges[0] : edges[1];\n\n    if (best.edge < THRESHOLD) {\n      return {\n        question: market.question,\n        questionType: market.questionType,\n        expiryDate: market.expiryDate,\n        probs,\n        decision: \"hold\",\n        edge: +best.edge.toFixed(4),\n      };\n    }\n\n    return {\n      question: market.question,\n      questionType: market.questionType,\n      expiryDate: market.expiryDate,\n      probs,\n      decision: \"buy\",\n      side: best.label,\n      fairPrice: +best.fairPrice.toFixed(4),\n      marketPrice: +best.marketPrice.toFixed(4),\n      edge: +best.edge.toFixed(4),\n    };\n  } catch (err) {\n    return { question: market.question, questionType: market.questionType, decision: \"hold\", reason: String(err) };\n  }\n});\n",
+  "durationMs": 1,
+  "result": [
+    {
+      "question": "Will Ethereum reach $4,000 in April?",
+      "decision": "hold",
+      "questionType": "hit",
+      "expiryDate": "2026-05-01T04:00:00Z",
+      "probs": [
+        0.0000010381516809512156,
+        0.999998961848319
+      ],
+      "edge": 0.002
+    },
+    {
+      "question": "Will Ethereum reach $3,800 in April?",
+      "decision": "hold",
+      "questionType": "hit",
+      "expiryDate": "2026-05-01T04:00:00Z",
+      "probs": [
+        0.0000010381516809512156,
+        0.999998961848319
+      ],
+      "edge": 0.003
+    },
+    {
+      "question": "Will Ethereum reach $3,400 in April?",
+      "decision": "hold",
+      "questionType": "hit",
+      "expiryDate": "2026-05-01T04:00:00Z",
+      "probs": [
+        0.0000010381516809512156,
+        0.999998961848319
+      ],
+      "edge": 0.005
+    },
+    {
+      "question": "Will Ethereum dip to $1,600 in April?",
+      "decision": "hold",
+      "questionType": "hit",
+      "expiryDate": "2026-05-01T04:00:00Z",
+      "probs": [
+        0.000001102347324925525,
+        0.999998897652675
+      ],
+      "edge": 0.02
+    },
+    {
+      "question": "Will Ethereum dip to $600 in April?",
+      "decision": "hold",
+      "questionType": "hit",
+      "expiryDate": "2026-05-01T04:00:00Z",
+      "probs": [
+        0.000001102347324925525,
+        0.999998897652675
+      ],
+      "edge": 0.002
+    },
+    {
+      "question": "Will Ethereum dip to $400 in April?",
+      "decision": "hold",
+      "questionType": "hit",
+      "expiryDate": "2026-05-01T04:00:00Z",
+      "probs": [
+        0.000001102347324925525,
+        0.999998897652675
+      ],
+      "edge": 0.002
+    },
+    {
+      "question": "Will Ethereum reach $3,000 in April?",
+      "decision": "hold",
+      "questionType": "hit",
+      "expiryDate": "2026-05-01T04:00:00Z",
+      "probs": [
+        0.00040546815351111157,
+        0.9995945318464889
+      ],
+      "edge": 0.0396
+    },
+    {
+      "question": "Will Ethereum reach $2,600 in April?",
+      "decision": "buy",
+      "questionType": "hit",
+      "expiryDate": "2026-05-01T04:00:00Z",
+      "probs": [
+        0.14995007835153204,
+        0.8500499216484679
+      ],
+      "side": "No",
+      "fairPrice": 0.85,
+      "marketPrice": 0.67,
+      "edge": 0.18
+    },
+    {
+      "question": "Will Ethereum reach $2,400 in April?",
+      "decision": "hold",
+      "questionType": "hit",
+      "reason": "closed or expired"
+    },
+    {
+      "question": "Will Ethereum reach $2,800 in April?",
+      "decision": "buy",
+      "questionType": "hit",
+      "expiryDate": "2026-05-01T04:00:00Z",
+      "probs": [
+        0.011516417942901615,
+        0.9884835820570984
+      ],
+      "side": "No",
+      "fairPrice": 0.9885,
+      "marketPrice": 0.889,
+      "edge": 0.0995
+    },
+    {
+      "question": "Will Ethereum reach $2,200 in April?",
+      "decision": "hold",
+      "questionType": "hit",
+      "reason": "closed or expired"
+    },
+    {
+      "question": "Will Ethereum dip to $1,400 in April?",
+      "decision": "hold",
+      "questionType": "hit",
+      "expiryDate": "2026-05-01T04:00:00Z",
+      "probs": [
+        0.000001102347324925525,
+        0.999998897652675
+      ],
+      "edge": 0.008
+    },
+    {
+      "question": "Will Ethereum dip to $1,000 in April?",
+      "decision": "hold",
+      "questionType": "hit",
+      "expiryDate": "2026-05-01T04:00:00Z",
+      "probs": [
+        0.000001102347324925525,
+        0.999998897652675
+      ],
+      "edge": 0.004
+    },
+    {
+      "question": "Will Ethereum dip to $200 in April?",
+      "decision": "hold",
+      "questionType": "hit",
+      "expiryDate": "2026-05-01T04:00:00Z",
+      "probs": [
+        0.000001102347324925525,
+        0.999998897652675
+      ],
+      "edge": 0.002
+    },
+    {
+      "question": "Will Ethereum reach $3,600 in April?",
+      "decision": "hold",
+      "questionType": "hit",
+      "expiryDate": "2026-05-01T04:00:00Z",
+      "probs": [
+        0.0000010381516809512156,
+        0.999998961848319
+      ],
+      "edge": 0.004
+    },
+    {
+      "question": "Will Ethereum reach $3,200 in April?",
+      "decision": "hold",
+      "questionType": "hit",
+      "expiryDate": "2026-05-01T04:00:00Z",
+      "probs": [
+        0.000007542951324185231,
+        0.9999924570486758
+      ],
+      "edge": 0.011
+    },
+    {
+      "question": "Will Ethereum dip to $2,000 in April?",
+      "decision": "buy",
+      "questionType": "hit",
+      "expiryDate": "2026-05-01T04:00:00Z",
+      "probs": [
+        0.020269142592835677,
+        0.9797308574071644
+      ],
+      "side": "No",
+      "fairPrice": 0.9797,
+      "marketPrice": 0.856,
+      "edge": 0.1237
+    },
+    {
+      "question": "Will Ethereum dip to $1,800 in April?",
+      "decision": "hold",
+      "questionType": "hit",
+      "expiryDate": "2026-05-01T04:00:00Z",
+      "probs": [
+        0.00011243986310640637,
+        0.9998875601368936
+      ],
+      "edge": 0.0329
+    },
+    {
+      "question": "Will Ethereum dip to $800 in April?",
+      "decision": "hold",
+      "questionType": "hit",
+      "expiryDate": "2026-05-01T04:00:00Z",
+      "probs": [
+        0.000001102347324925525,
+        0.999998897652675
+      ],
+      "edge": 0.003
+    },
+    {
+      "question": "Will Ethereum dip to $1,200 in April?",
+      "decision": "hold",
+      "questionType": "hit",
+      "expiryDate": "2026-05-01T04:00:00Z",
+      "probs": [
+        0.000001102347324925525,
+        0.999998897652675
+      ],
+      "edge": 0.005
+    }
+  ]
+}

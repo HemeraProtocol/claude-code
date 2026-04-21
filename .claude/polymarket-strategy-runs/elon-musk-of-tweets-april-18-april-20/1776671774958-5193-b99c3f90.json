@@ -1,0 +1,170 @@
+{
+  "schemaVersion": 2,
+  "timestamp": "2026-04-20T07:58:51.621Z",
+  "status": "success",
+  "ctxPath": "/tmp/polymarket-ctx-elon-musk-of-tweets-april-18-april-20-5193-b99c3f90.json",
+  "ctxHash": "14998004608128757229",
+  "helpersModulePath": "/Users/linxuan/Desktop/claude_code_research/claude-code/.claude/skills/polymarket-strategy/helpers.ts",
+  "helpersHash": "14783883925871464737",
+  "gitCommit": "b67c8f2d96844cfe3d1bc8577af9c8ea9fcbb17b",
+  "code": "\nconst THRESHOLD = 0.04;\n\n// ── Tweet rate analysis ──\nconst totalSoFar = ctx.news.totalCount; // 45\nconst windowStartTs = 1776168000000; // 2026-04-18T16:00:00Z\nconst windowEndTs   = 1776700800000; // 2026-04-20T16:00:00Z\nconst nowTs = ctx.timing.nowTs;\n\nconst elapsedHours   = (nowTs - windowStartTs) / 3600000;\nconst remainingHours = (windowEndTs - nowTs) / 3600000;\nconst avgRate = totalSoFar / elapsedHours;\n\n// Recent rate from fetched tweets (newest first)\nconst tweets = ctx.news.tweets;\nconst newestTs  = new Date(tweets[0].createdAt).getTime();\nconst oldestTs  = new Date(tweets[tweets.length - 1].createdAt).getTime();\nconst recentWindowHours = Math.max((newestTs - oldestTs) / 3600000, 0.1);\nconst recentRate = tweets.length / recentWindowHours;\n\n// Blended rate: 40% average + 60% recent (recent window is evening US time, next 8h is morning)\nconst blendedRate = avgRate * 0.4 + recentRate * 0.6;\nconst expectedAdditional = blendedRate * remainingHours;\nconst expectedTotal = totalSoFar + expectedAdditional;\nconst additionalSigma = Math.max(Math.sqrt(blendedRate * remainingHours), 0.5);\n\nconst normCDF = ctx.helpers.normCDF;\n\n// P(final count in [lower, upper]) using normal approximation on additional tweets\nconst pInRange = (lower, upper) => {\n  const addUpper = (upper === null ? 9999 : upper) - totalSoFar;\n  const addLower = Math.max(0, lower - totalSoFar);\n  if (addUpper < 0) return 0; // already exceeded upper\n  const zLow  = (addLower - 0.5 - expectedAdditional) / additionalSigma;\n  const zHigh = (addUpper + 0.5 - expectedAdditional) / additionalSigma;\n  return Math.max(1e-6, Math.min(1 - 1e-6, normCDF(zHigh) - normCDF(zLow)));\n};\n\n// Parse bucket range from question text\nconst parseBucketRange = (q) => {\n  const lt = q.match(/<(\\d+)/);\n  if (lt) return [0, parseInt(lt[1]) - 1];\n  const plus = q.match(/(\\d+)\\+/);\n  if (plus) return [parseInt(plus[1]), null];\n  const rng = q.match(/(\\d+)-(\\d+)/);\n  if (rng) return [parseInt(rng[1]), parseInt(rng[2])];\n  return [null, null];\n};\n\nconst meta = { avgRate, recentRate, blendedRate, expectedAdditional, expectedTotal, remainingHours };\n\nreturn ctx.markets.map((market) => {\n  try {\n    if (market.closed || market.hoursToExpiry < 0)\n      return { question: market.question, decision: \"hold\", reason: \"closed or expired\" };\n\n    const mCtx = { market, timing: ctx.timing };\n    const [lower, upper] = parseBucketRange(market.question);\n    if (lower === null)\n      return { question: market.question, decision: \"hold\", reason: \"could not parse range\" };\n\n    const pYes = pInRange(lower, upper);\n    const probs = ctx.helpers.binaryProbsFromYesProb(mCtx, pYes);\n    const edges = ctx.helpers.edgeFromProbs(probs, mCtx);\n    const best = edges[0].edge >= edges[1].edge ? edges[0] : edges[1];\n\n    const base = { question: market.question, pYes: +pYes.toFixed(4), marketPriceYes: market.outcomes[0].price, meta };\n    if (best.edge < THRESHOLD)\n      return { ...base, decision: \"hold\", edge: +best.edge.toFixed(4) };\n\n    return {\n      ...base,\n      decision: \"buy\",\n      side: best.label,\n      fairPrice: +best.fairPrice.toFixed(4),\n      marketPrice: +best.marketPrice.toFixed(4),\n      edge: +best.edge.toFixed(4),\n    };\n  } catch (err) {\n    return { question: market.question, decision: \"hold\", reason: String(err) };\n  }\n});\n",
+  "durationMs": 1,
+  "result": [
+    {
+      "question": "Will Elon Musk post <40 tweets from April 18 to April 20, 2026?",
+      "decision": "hold",
+      "pYes": 0,
+      "marketPriceYes": 0.0005,
+      "meta": {
+        "avgRate": 0.32157215722501237,
+        "recentRate": 2.312881464824928,
+        "blendedRate": 1.5163577417849616,
+        "expectedAdditional": 12.225651983981574,
+        "expectedTotal": 57.22565198398158,
+        "remainingHours": 8.062511666666667
+      },
+      "edge": 0.0005
+    },
+    {
+      "question": "Will Elon Musk post 40-64 tweets from April 18 to April 20, 2026?",
+      "decision": "buy",
+      "pYes": 0.9984,
+      "marketPriceYes": 0.875,
+      "meta": {
+        "avgRate": 0.32157215722501237,
+        "recentRate": 2.312881464824928,
+        "blendedRate": 1.5163577417849616,
+        "expectedAdditional": 12.225651983981574,
+        "expectedTotal": 57.22565198398158,
+        "remainingHours": 8.062511666666667
+      },
+      "side": "Yes",
+      "fairPrice": 0.9984,
+      "marketPrice": 0.92,
+      "edge": 0.0784
+    },
+    {
+      "question": "Will Elon Musk post 65-89 tweets from April 18 to April 20, 2026?",
+      "decision": "buy",
+      "pYes": 0.0016,
+      "marketPriceYes": 0.13,
+      "meta": {
+        "avgRate": 0.32157215722501237,
+        "recentRate": 2.312881464824928,
+        "blendedRate": 1.5163577417849616,
+        "expectedAdditional": 12.225651983981574,
+        "expectedTotal": 57.22565198398158,
+        "remainingHours": 8.062511666666667
+      },
+      "side": "No",
+      "fairPrice": 0.9984,
+      "marketPrice": 0.914,
+      "edge": 0.0844
+    },
+    {
+      "question": "Will Elon Musk post 90-114 tweets from April 18 to April 20, 2026?",
+      "decision": "hold",
+      "pYes": 0,
+      "marketPriceYes": 0.008,
+      "meta": {
+        "avgRate": 0.32157215722501237,
+        "recentRate": 2.312881464824928,
+        "blendedRate": 1.5163577417849616,
+        "expectedAdditional": 12.225651983981574,
+        "expectedTotal": 57.22565198398158,
+        "remainingHours": 8.062511666666667
+      },
+      "edge": 0.01
+    },
+    {
+      "question": "Will Elon Musk post 115-139 tweets from April 18 to April 20, 2026?",
+      "decision": "hold",
+      "pYes": 0,
+      "marketPriceYes": 0.0015,
+      "meta": {
+        "avgRate": 0.32157215722501237,
+        "recentRate": 2.312881464824928,
+        "blendedRate": 1.5163577417849616,
+        "expectedAdditional": 12.225651983981574,
+        "expectedTotal": 57.22565198398158,
+        "remainingHours": 8.062511666666667
+      },
+      "edge": 0.001
+    },
+    {
+      "question": "Will Elon Musk post 140-164 tweets from April 18 to April 20, 2026?",
+      "decision": "hold",
+      "pYes": 0,
+      "marketPriceYes": 0.0005,
+      "meta": {
+        "avgRate": 0.32157215722501237,
+        "recentRate": 2.312881464824928,
+        "blendedRate": 1.5163577417849616,
+        "expectedAdditional": 12.225651983981574,
+        "expectedTotal": 57.22565198398158,
+        "remainingHours": 8.062511666666667
+      },
+      "edge": 0.0005
+    },
+    {
+      "question": "Will Elon Musk post 165-189 tweets from April 18 to April 20, 2026?",
+      "decision": "hold",
+      "pYes": 0,
+      "marketPriceYes": 0.0005,
+      "meta": {
+        "avgRate": 0.32157215722501237,
+        "recentRate": 2.312881464824928,
+        "blendedRate": 1.5163577417849616,
+        "expectedAdditional": 12.225651983981574,
+        "expectedTotal": 57.22565198398158,
+        "remainingHours": 8.062511666666667
+      },
+      "edge": 0.0005
+    },
+    {
+      "question": "Will Elon Musk post 190-214 tweets from April 18 to April 20, 2026?",
+      "decision": "hold",
+      "pYes": 0,
+      "marketPriceYes": 0.0005,
+      "meta": {
+        "avgRate": 0.32157215722501237,
+        "recentRate": 2.312881464824928,
+        "blendedRate": 1.5163577417849616,
+        "expectedAdditional": 12.225651983981574,
+        "expectedTotal": 57.22565198398158,
+        "remainingHours": 8.062511666666667
+      },
+      "edge": 0.0005
+    },
+    {
+      "question": "Will Elon Musk post 215-239 tweets from April 18 to April 20, 2026?",
+      "decision": "hold",
+      "pYes": 0,
+      "marketPriceYes": 0.0005,
+      "meta": {
+        "avgRate": 0.32157215722501237,
+        "recentRate": 2.312881464824928,
+        "blendedRate": 1.5163577417849616,
+        "expectedAdditional": 12.225651983981574,
+        "expectedTotal": 57.22565198398158,
+        "remainingHours": 8.062511666666667
+      },
+      "edge": 0.0005
+    },
+    {
+      "question": "Will Elon Musk post 240+ tweets from April 18 to April 20, 2026?",
+      "decision": "hold",
+      "pYes": 0,
+      "marketPriceYes": 0.0005,
+      "meta": {
+        "avgRate": 0.32157215722501237,
+        "recentRate": 2.312881464824928,
+        "blendedRate": 1.5163577417849616,
+        "expectedAdditional": 12.225651983981574,
+        "expectedTotal": 57.22565198398158,
+        "remainingHours": 8.062511666666667
+      },
+      "edge": 0.0005
+    }
+  ]
+}

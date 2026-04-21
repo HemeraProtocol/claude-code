@@ -1,0 +1,171 @@
+{
+  "schemaVersion": 2,
+  "timestamp": "2026-04-15T09:35:04.919Z",
+  "status": "success",
+  "ctxPath": "/tmp/polymarket-ctx-bitcoin-price-on-april-15-97801-95141ca4.json",
+  "ctxHash": "2919079239724659883",
+  "helpersModulePath": "/Users/linxuan/Desktop/claude_code_research/claude-code/.claude/skills/polymarket-strategy/helpers.ts",
+  "helpersHash": "17483277944841519974",
+  "gitCommit": "9cb8407420fe77783b30eb432d11bee5d997a6b0",
+  "code": "\nconst et = ctx.helpers.eventPrimaryQuestionType(ctx);\n\n// Event-scope features\nconst closes = ctx.underlying.klines.map((k) => k.close);\nconst rsi = ctx.helpers.rsi(closes, 14);\nconst emaFast = ctx.helpers.emaArray(closes, 12).at(-1);\nconst emaSlow = ctx.helpers.emaArray(closes, 26).at(-1);\nconst momentum = Math.sign(emaFast - emaSlow);\n\n// Short-term momentum: last 4 closes\nconst recentCloses = closes.slice(-4);\nconst shortMomentum = (recentCloses.at(-1) - recentCloses[0]) / recentCloses[0];\n\nconst logit   = (p) => Math.log(p / (1 - p));\nconst sigmoid = (x) => 1 / (1 + Math.exp(-x));\nconst clamp   = (p) => Math.min(Math.max(p, 1e-6), 1 - 1e-6);\n\nconst THRESHOLD = 0.04;\n\nconst baseYesProb = (mCtx) => {\n  switch (mCtx.market.questionType) {\n    case \"above\": return ctx.helpers.bsAbove(mCtx);\n    case \"below\": return 1 - ctx.helpers.bsAbove(mCtx);\n    case \"range\": return ctx.helpers.bsRange(mCtx);\n    case \"hit\":   return ctx.helpers.bsOneTouch(mCtx);\n    default: throw new Error(`unsupported questionType: ${mCtx.market.questionType}`);\n  }\n};\n\nreturn ctx.markets.map((market) => {\n  try {\n    if (market.closed || market.hoursToExpiry < 0) {\n      return { question: market.question, questionType: market.questionType, decision: \"hold\", reason: \"closed or expired\" };\n    }\n\n    const mCtx = { market, underlying: ctx.underlying, timing: ctx.timing };\n\n    let probs;\n    if (market.questionType === \"firstHit\") {\n      probs = ctx.helpers.firstHitProbabilities(mCtx, { seed: 42 });\n    } else if (market.questionType === \"unknown\" || market.strike === null) {\n      return { question: market.question, questionType: market.questionType, decision: \"hold\", reason: \"unknown type or no strike\" };\n    } else {\n      const yes0 = baseYesProb(mCtx);\n      // Momentum shift: RSI deviation + EMA trend + short-term price momentum\n      const rsiShift = (rsi - 50) / 200;\n      const emaShift = momentum * 0.03;\n      const shortShift = shortMomentum * 2.0;\n      const totalShift = rsiShift + emaShift + shortShift;\n      const yes = sigmoid(logit(clamp(yes0)) + totalShift);\n      probs = ctx.helpers.binaryProbsFromYesProb(mCtx, yes);\n    }\n\n    const edges = ctx.helpers.edgeFromProbs(probs, mCtx);\n    const best = edges[0].edge >= edges[1].edge ? edges[0] : edges[1];\n\n    if (best.edge < THRESHOLD) {\n      return {\n        question: market.question,\n        questionType: market.questionType,\n        expiryDate: market.expiryDate,\n        hoursToExpiry: market.hoursToExpiry,\n        probs,\n        decision: \"hold\",\n        edge: best.edge,\n        spot: ctx.underlying.price,\n        strike: market.strike,\n      };\n    }\n\n    return {\n      question: market.question,\n      questionType: market.questionType,\n      expiryDate: market.expiryDate,\n      hoursToExpiry: market.hoursToExpiry,\n      probs,\n      decision: \"buy\",\n      side: best.label,\n      fairPrice: best.fairPrice,\n      marketPrice: best.marketPrice,\n      edge: best.edge,\n      spot: ctx.underlying.price,\n      strike: market.strike,\n    };\n  } catch (err) {\n    return { question: market.question, decision: \"hold\", reason: String(err) };\n  }\n});\n",
+  "durationMs": 0,
+  "result": [
+    {
+      "question": "Will the price of Bitcoin be between $78,000 and $80,000 on April 15?",
+      "decision": "hold",
+      "questionType": "range",
+      "expiryDate": "2026-04-15T16:00:00Z",
+      "hoursToExpiry": 6.419788055555555,
+      "probs": [
+        0.0000010182849778486776,
+        0.9999989817150221
+      ],
+      "edge": 0.000998981715022107,
+      "spot": 73944.01,
+      "strike": 78000
+    },
+    {
+      "question": "Will the price of Bitcoin be less than $62,000 on April 15?",
+      "decision": "hold",
+      "questionType": "below",
+      "expiryDate": "2026-04-15T16:00:00Z",
+      "hoursToExpiry": 6.419787777777778,
+      "probs": [
+        0.0000010182849778486776,
+        0.9999989817150221
+      ],
+      "edge": 0.000498981715022051,
+      "spot": 73944.01,
+      "strike": 62000
+    },
+    {
+      "question": "Will the price of Bitcoin be between $62,000 and $64,000 on April 15?",
+      "decision": "hold",
+      "questionType": "range",
+      "expiryDate": "2026-04-15T16:00:00Z",
+      "hoursToExpiry": 6.419787777777778,
+      "probs": [
+        0.0000010182849778486776,
+        0.9999989817150221
+      ],
+      "edge": 0.000498981715022051,
+      "spot": 73944.01,
+      "strike": 62000
+    },
+    {
+      "question": "Will the price of Bitcoin be between $64,000 and $66,000 on April 15?",
+      "decision": "hold",
+      "questionType": "range",
+      "expiryDate": "2026-04-15T16:00:00Z",
+      "hoursToExpiry": 6.419787777777778,
+      "probs": [
+        0.0000010182849778486776,
+        0.9999989817150221
+      ],
+      "edge": 0.000498981715022051,
+      "spot": 73944.01,
+      "strike": 64000
+    },
+    {
+      "question": "Will the price of Bitcoin be between $66,000 and $68,000 on April 15?",
+      "decision": "hold",
+      "questionType": "range",
+      "expiryDate": "2026-04-15T16:00:00Z",
+      "hoursToExpiry": 6.419787777777778,
+      "probs": [
+        0.0000010182849778486776,
+        0.9999989817150221
+      ],
+      "edge": 0.000498981715022051,
+      "spot": 73944.01,
+      "strike": 66000
+    },
+    {
+      "question": "Will the price of Bitcoin be between $68,000 and $70,000 on April 15?",
+      "decision": "hold",
+      "questionType": "range",
+      "expiryDate": "2026-04-15T16:00:00Z",
+      "hoursToExpiry": 6.419787777777778,
+      "probs": [
+        0.0000010182849778486776,
+        0.9999989817150221
+      ],
+      "edge": 0.000998981715022107,
+      "spot": 73944.01,
+      "strike": 68000
+    },
+    {
+      "question": "Will the price of Bitcoin be between $70,000 and $72,000 on April 15?",
+      "decision": "hold",
+      "questionType": "range",
+      "expiryDate": "2026-04-15T16:00:00Z",
+      "hoursToExpiry": 6.419787777777778,
+      "probs": [
+        0.0000010182849778486776,
+        0.9999989817150221
+      ],
+      "edge": 0.02499898171502213,
+      "spot": 73944.01,
+      "strike": 70000
+    },
+    {
+      "question": "Will the price of Bitcoin be between $72,000 and $74,000 on April 15?",
+      "decision": "buy",
+      "questionType": "range",
+      "expiryDate": "2026-04-15T16:00:00Z",
+      "hoursToExpiry": 6.419787777777778,
+      "probs": [
+        0.5686084924858975,
+        0.4313915075141025
+      ],
+      "side": "Yes",
+      "fairPrice": 0.5686084924858975,
+      "marketPrice": 0.49,
+      "edge": 0.07860849248589752,
+      "spot": 73944.01,
+      "strike": 72000
+    },
+    {
+      "question": "Will the price of Bitcoin be between $74,000 and $76,000 on April 15?",
+      "decision": "hold",
+      "questionType": "range",
+      "expiryDate": "2026-04-15T16:00:00Z",
+      "hoursToExpiry": 6.419787777777778,
+      "probs": [
+        0.440301995743671,
+        0.559698004256329
+      ],
+      "edge": 0.00969800425632894,
+      "spot": 73944.01,
+      "strike": 74000
+    },
+    {
+      "question": "Will the price of Bitcoin be between $76,000 and $78,000 on April 15?",
+      "decision": "hold",
+      "questionType": "range",
+      "expiryDate": "2026-04-15T16:00:00Z",
+      "hoursToExpiry": 6.419787777777778,
+      "probs": [
+        0.0000010182849778486776,
+        0.9999989817150221
+      ],
+      "edge": 0.02699898171502213,
+      "spot": 73944.01,
+      "strike": 76000
+    },
+    {
+      "question": "Will the price of Bitcoin be greater than $80,000 on April 15?",
+      "decision": "hold",
+      "questionType": "above",
+      "expiryDate": "2026-04-15T16:00:00Z",
+      "hoursToExpiry": 6.419787777777778,
+      "probs": [
+        0.0000010182849778486776,
+        0.9999989817150221
+      ],
+      "edge": 0.000498981715022051,
+      "spot": 73944.01,
+      "strike": 80000
+    }
+  ]
+}

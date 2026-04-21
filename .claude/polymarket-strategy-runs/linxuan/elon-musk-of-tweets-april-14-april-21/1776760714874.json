@@ -1,0 +1,257 @@
+{
+  "schemaVersion": 2,
+  "timestamp": "2026-04-21T08:39:16.282Z",
+  "status": "success",
+  "ctxPath": "/Users/linxuan/Desktop/claude_code_research/claude-code/.claude/polymarket-strategy-runs/linxuan/elon-musk-of-tweets-april-14-april-21/1776760714874.ctx.json",
+  "ctxHash": "15192452177342754563",
+  "helpersModulePath": "/Users/linxuan/Desktop/claude_code_research/claude-code/.claude/skills/polymarket-strategy/helpers.ts",
+  "helpersHash": "3430578128393161221",
+  "gitCommit": "4ce8f063c0f940f4eecec7b0311065937335e570",
+  "code": "\n// Tweet count event: Elon Musk April 14-21, 2026\n// Window: April 14 12:00 PM ET (16:00 UTC) to April 21 12:00 PM ET (16:00 UTC)\n// Current count: 210, ~7.37 hours remaining\n\nconst THRESHOLD = 0.04;\n\nconst windowStart = new Date(\"2026-04-14T16:00:00Z\").getTime();\nconst windowEnd   = new Date(\"2026-04-21T16:00:00Z\").getTime();\n\nconst model = ctx.helpers.countModel({\n  observed: ctx.news.totalCount,\n  windowStart,\n  windowEnd,\n  nowTs: ctx.timing.nowTs,\n});\n\n// Log model info for diagnostics\nconst diagnostics = {\n  observed: ctx.news.totalCount,\n  projectedMu: model.mu,\n  projectedSigma: model.sigma,\n  rate: model.rate,\n  elapsed: model.elapsed,\n  remaining: model.remaining,\n  elapsedPct: (model.elapsed / (model.elapsed + model.remaining) * 100).toFixed(1) + \"%\",\n};\n\nreturn ctx.markets.map((market) => {\n  try {\n    if (market.closed || market.hoursToExpiry < 0) {\n      return { question: market.question, decision: \"hold\", reason: \"closed or expired\" };\n    }\n    const mCtx = { market, timing: ctx.timing };\n\n    let pYes;\n    if (market.questionType === \"count\" && market.strike !== null) {\n      pYes = ctx.helpers.countRangeProb(model, market.strike, market.strike2);\n    } else {\n      pYes = 0.5;\n    }\n\n    const probs = ctx.helpers.binaryProbsFromYesProb(mCtx, pYes);\n    const edges = ctx.helpers.edgeFromProbs(probs, mCtx);\n    const best = edges[0].edge >= edges[1].edge ? edges[0] : edges[1];\n\n    const result = {\n      question: market.question,\n      range: `${market.strike}-${market.strike2}`,\n      pYes: +pYes.toFixed(4),\n      marketYesPrice: market.outcomes[0].price,\n      decision: best.edge < THRESHOLD ? \"hold\" : \"buy\",\n      edge: +best.edge.toFixed(4),\n      diagnostics: market.slug.includes(\"200-219\") || market.slug.includes(\"220-239\") || market.slug.includes(\"240-259\") ? diagnostics : undefined,\n    };\n\n    if (best.edge >= THRESHOLD) {\n      result.side = best.label;\n      result.fairPrice = best.fairPrice;\n      result.marketPrice = best.marketPrice;\n    }\n\n    return result;\n  } catch (err) {\n    return { question: market.question, decision: \"hold\", reason: String(err) };\n  }\n});\n",
+  "durationMs": 1,
+  "result": [
+    {
+      "question": "Will Elon Musk post 0-19 tweets from April 14 to April 21, 2026?",
+      "decision": "hold",
+      "reason": "closed or expired"
+    },
+    {
+      "question": "Will Elon Musk post 20-39 tweets from April 14 to April 21, 2026?",
+      "decision": "hold",
+      "reason": "closed or expired"
+    },
+    {
+      "question": "Will Elon Musk post 40-59 tweets from April 14 to April 21, 2026?",
+      "decision": "hold",
+      "reason": "closed or expired"
+    },
+    {
+      "question": "Will Elon Musk post 60-79 tweets from April 14 to April 21, 2026?",
+      "decision": "hold",
+      "reason": "closed or expired"
+    },
+    {
+      "question": "Will Elon Musk post 80-99 tweets from April 14 to April 21, 2026?",
+      "decision": "hold",
+      "reason": "closed or expired"
+    },
+    {
+      "question": "Will Elon Musk post 100-119 tweets from April 14 to April 21, 2026?",
+      "decision": "hold",
+      "reason": "closed or expired"
+    },
+    {
+      "question": "Will Elon Musk post 120-139 tweets from April 14 to April 21, 2026?",
+      "decision": "hold",
+      "reason": "closed or expired"
+    },
+    {
+      "question": "Will Elon Musk post 140-159 tweets from April 14 to April 21, 2026?",
+      "decision": "hold",
+      "reason": "closed or expired"
+    },
+    {
+      "question": "Will Elon Musk post 160-179 tweets from April 14 to April 21, 2026?",
+      "decision": "hold",
+      "reason": "closed or expired"
+    },
+    {
+      "question": "Will Elon Musk post 180-199 tweets from April 14 to April 21, 2026?",
+      "decision": "hold",
+      "reason": "closed or expired"
+    },
+    {
+      "question": "Will Elon Musk post 200-219 tweets from April 14 to April 21, 2026?",
+      "decision": "buy",
+      "range": "200-219",
+      "pYes": 0.4409,
+      "marketYesPrice": 0.1485,
+      "edge": 0.2129,
+      "diagnostics": {
+        "observed": 210,
+        "projectedMu": 219.6173844216222,
+        "projectedSigma": 17.840988646340975,
+        "rate": 1.3072463358429893,
+        "elapsed": 160.64302055555555,
+        "remaining": 7.356979444444445,
+        "elapsedPct": "95.6%"
+      },
+      "side": "Yes",
+      "fairPrice": 0.4408936056886615,
+      "marketPrice": 0.228
+    },
+    {
+      "question": "Will Elon Musk post 220-239 tweets from April 14 to April 21, 2026?",
+      "decision": "buy",
+      "range": "220-239",
+      "pYes": 0.4462,
+      "marketYesPrice": 0.72,
+      "edge": 0.2638,
+      "diagnostics": {
+        "observed": 210,
+        "projectedMu": 219.6173844216222,
+        "projectedSigma": 17.840988646340975,
+        "rate": 1.3072463358429893,
+        "elapsed": 160.64302055555555,
+        "remaining": 7.356979444444445,
+        "elapsedPct": "95.6%"
+      },
+      "side": "No",
+      "fairPrice": 0.553795270280345,
+      "marketPrice": 0.29
+    },
+    {
+      "question": "Will Elon Musk post 240-259 tweets from April 14 to April 21, 2026?",
+      "decision": "hold",
+      "range": "240-259",
+      "pYes": 0.0567,
+      "marketYesPrice": 0.09,
+      "edge": 0.0133,
+      "diagnostics": {
+        "observed": 210,
+        "projectedMu": 219.6173844216222,
+        "projectedSigma": 17.840988646340975,
+        "rate": 1.3072463358429893,
+        "elapsed": 160.64302055555555,
+        "remaining": 7.356979444444445,
+        "elapsedPct": "95.6%"
+      }
+    },
+    {
+      "question": "Will Elon Musk post 260-279 tweets from April 14 to April 21, 2026?",
+      "decision": "hold",
+      "range": "260-279",
+      "pYes": 0.0008,
+      "marketYesPrice": 0.008,
+      "edge": 0.0062
+    },
+    {
+      "question": "Will Elon Musk post 280-299 tweets from April 14 to April 21, 2026?",
+      "decision": "hold",
+      "range": "280-299",
+      "pYes": 0,
+      "marketYesPrice": 0.0015,
+      "edge": 0.001
+    },
+    {
+      "question": "Will Elon Musk post 300-319 tweets from April 14 to April 21, 2026?",
+      "decision": "hold",
+      "range": "300-319",
+      "pYes": 0,
+      "marketYesPrice": 0.0005,
+      "edge": 0.0005
+    },
+    {
+      "question": "Will Elon Musk post 320-339 tweets from April 14 to April 21, 2026?",
+      "decision": "hold",
+      "range": "320-339",
+      "pYes": 0,
+      "marketYesPrice": 0.0005,
+      "edge": 0.0005
+    },
+    {
+      "question": "Will Elon Musk post 340-359 tweets from April 14 to April 21, 2026?",
+      "decision": "hold",
+      "range": "340-359",
+      "pYes": 0,
+      "marketYesPrice": 0.0005,
+      "edge": 0.0005
+    },
+    {
+      "question": "Will Elon Musk post 360-379 tweets from April 14 to April 21, 2026?",
+      "decision": "hold",
+      "range": "360-379",
+      "pYes": 0,
+      "marketYesPrice": 0.0005,
+      "edge": 0.0005
+    },
+    {
+      "question": "Will Elon Musk post 380-399 tweets from April 14 to April 21, 2026?",
+      "decision": "hold",
+      "range": "380-399",
+      "pYes": 0,
+      "marketYesPrice": 0.0005,
+      "edge": 0.0005
+    },
+    {
+      "question": "Will Elon Musk post 400-419 tweets from April 14 to April 21, 2026?",
+      "decision": "hold",
+      "range": "400-419",
+      "pYes": 0,
+      "marketYesPrice": 0.0005,
+      "edge": 0.0005
+    },
+    {
+      "question": "Will Elon Musk post 420-439 tweets from April 14 to April 21, 2026?",
+      "decision": "hold",
+      "range": "420-439",
+      "pYes": 0,
+      "marketYesPrice": 0.0005,
+      "edge": 0.0005
+    },
+    {
+      "question": "Will Elon Musk post 440-459 tweets from April 14 to April 21, 2026?",
+      "decision": "hold",
+      "range": "440-459",
+      "pYes": 0,
+      "marketYesPrice": 0.0005,
+      "edge": 0.0005
+    },
+    {
+      "question": "Will Elon Musk post 460-479 tweets from April 14 to April 21, 2026?",
+      "decision": "hold",
+      "range": "460-479",
+      "pYes": 0,
+      "marketYesPrice": 0.0005,
+      "edge": 0.0005
+    },
+    {
+      "question": "Will Elon Musk post 480-499 tweets from April 14 to April 21, 2026?",
+      "decision": "hold",
+      "range": "480-499",
+      "pYes": 0,
+      "marketYesPrice": 0.0005,
+      "edge": 0.0005
+    },
+    {
+      "question": "Will Elon Musk post 500-519 tweets from April 14 to April 21, 2026?",
+      "decision": "hold",
+      "range": "500-519",
+      "pYes": 0,
+      "marketYesPrice": 0.0005,
+      "edge": 0.0005
+    },
+    {
+      "question": "Will Elon Musk post 520-539 tweets from April 14 to April 21, 2026?",
+      "decision": "hold",
+      "range": "520-539",
+      "pYes": 0,
+      "marketYesPrice": 0.0005,
+      "edge": 0.0005
+    },
+    {
+      "question": "Will Elon Musk post 540-559 tweets from April 14 to April 21, 2026?",
+      "decision": "hold",
+      "range": "540-559",
+      "pYes": 0,
+      "marketYesPrice": 0.0005,
+      "edge": 0.0005
+    },
+    {
+      "question": "Will Elon Musk post 560-579 tweets from April 14 to April 21, 2026?",
+      "decision": "hold",
+      "range": "560-579",
+      "pYes": 0,
+      "marketYesPrice": 0.0005,
+      "edge": 0.0005
+    },
+    {
+      "question": "Will Elon Musk post 580+ tweets from April 14 to April 21, 2026?",
+      "decision": "hold",
+      "range": "580-null",
+      "pYes": 0,
+      "marketYesPrice": 0.0005,
+      "edge": 0.0005
+    }
+  ]
+}

@@ -1,0 +1,158 @@
+{
+  "schemaVersion": 2,
+  "timestamp": "2026-04-17T01:43:53.178Z",
+  "status": "success",
+  "ctxPath": "/tmp/polymarket-ctx-what-price-will-bitcoin-hit-in-april-2026-77518-cee0c42a.json",
+  "ctxHash": "15378971469347524908",
+  "helpersModulePath": "/Users/linxuan/Desktop/claude_code_research/claude-code/.claude/skills/polymarket-strategy/helpers.ts",
+  "helpersHash": "17483277944841519974",
+  "gitCommit": "d128028e2b8cd5c2fa0ae711d4db780f25aa7dae",
+  "code": "\n// ── BTC 月内触碰价位策略（Barrier Touch Relative Value） ──\n// questionType: 'hit' → bsOneTouch baseline\n\nconst logit   = (p) => Math.log(p / (1 - p));\nconst sigmoid = (x) => 1 / (1 + Math.exp(-x));\nconst clamp   = (p, lo=1e-6, hi=1-1e-6) => Math.min(Math.max(p, lo), hi);\n\n// ── 1. Event-scope features ────────────────────────────────\nconst closes = ctx.underlying.klines.map(k => k.close);\nconst highs  = ctx.underlying.klines.map(k => k.high);\nconst lows   = ctx.underlying.klines.map(k => k.low);\nconst spot   = ctx.underlying.price;\n\nconst rsiVal   = ctx.helpers.rsi(closes, 14);\nconst emaFast  = ctx.helpers.emaArray(closes, 12).at(-1);\nconst emaSlow  = ctx.helpers.emaArray(closes, 26).at(-1);\n\nconst recent3dHigh = Math.max(...highs.slice(-72));\nconst recent3dLow  = Math.min(...lows.slice(-72));\n\nlet volRatio = 1;\ntry { volRatio = ctx.helpers.volRatio(ctx, '24h', '7d'); } catch(e) {}\n\n// ── TrendScore (-2 to +2) ──────────────────────────────────\nlet trendScore = 0;\nif (rsiVal > 60)              trendScore += 0.5;\nif (rsiVal < 40)              trendScore -= 0.5;\nif (emaFast > emaSlow)        trendScore += 0.5;\nif (emaFast < emaSlow)        trendScore -= 0.5;\nif (spot > recent3dHigh)      trendScore += 0.5;\nif (spot < recent3dLow)       trendScore -= 0.5;\nif (volRatio > 1.3)           trendScore += Math.sign(trendScore) * 0.5 || 0.5;\ntrendScore = Math.max(-2, Math.min(2, trendScore));\n\n// ── 2. Sort markets for monotonicity check ─────────────────\nconst activeMarkets = ctx.markets.filter(m => m.strike != null && !m.closed);\nconst upperMarkets  = activeMarkets.filter(m => m.strike > spot).sort((a,b)=>a.strike-b.strike);\nconst lowerMarkets  = activeMarkets.filter(m => m.strike < spot).sort((a,b)=>b.strike-a.strike);\n\n// Helper: get Yes price directly from outcomes array\nconst getYesPrice = (market) => {\n  const o = market.outcomes.find(o => String(o.label ?? '').toLowerCase() === 'yes');\n  return o ? o.price : null;\n};\nconst getNoPrice = (market) => {\n  const o = market.outcomes.find(o => String(o.label ?? '').toLowerCase() === 'no');\n  return o ? o.price : null;\n};\nconst getYesBid  = (market) => {\n  const o = market.outcomes.find(o => String(o.label ?? '').toLowerCase() === 'yes');\n  return o ? o.bestBid : null;\n};\nconst getYesAsk  = (market) => {\n  const o = market.outcomes.find(o => String(o.label ?? '').toLowerCase() === 'yes');\n  return o ? o.bestAsk : null;\n};\n\n// Monotonicity adjacency: is this market Yes price cheap vs neighbours?\nconst isStructurallyCheap = (market, sortedGroup) => {\n  const idx = sortedGroup.findIndex(m => m.slug === market.slug);\n  if (idx < 0) return false;\n  const mp = getYesPrice(market);\n  if (mp == null) return false;\n  const prev = idx > 0 ? getYesPrice(sortedGroup[idx-1]) : null;\n  const next = idx < sortedGroup.length-1 ? getYesPrice(sortedGroup[idx+1]) : null;\n  const cheapVsNext = next != null && mp < next - 0.02;\n  const cheapVsPrev = prev != null && mp < prev * 0.55;\n  return cheapVsNext || cheapVsPrev;\n};\n\n// ── 3. Per-market analysis ────────────────────────────────\nconst YES_EDGE_THR = 0.06;\nconst NO_EDGE_THR  = 0.04;\n\nreturn ctx.markets.map(market => {\n  try {\n    if (market.closed || market.hoursToExpiry < 0) {\n      return { question: market.question, decision: 'hold', reason: '已关闭或到期' };\n    }\n    if (market.strike == null) {\n      return { question: market.question, decision: 'hold', reason: 'strike 未知' };\n    }\n\n    const mCtx = { market, underlying: ctx.underlying, timing: ctx.timing };\n\n    // Direct outcome price access\n    const mktYes = getYesPrice(market);\n    const mktNo  = getNoPrice(market);\n    const yesBid = getYesBid(market);\n    const yesAsk = getYesAsk(market);\n\n    if (mktYes == null) return { question: market.question, decision: 'hold', reason: 'Yes 价格缺失' };\n\n    // ── Filters ──────────────────────────────────────────\n    const spreadPct = (yesAsk != null && yesBid != null) ? (yesAsk - yesBid) : 0;\n    if (market.liquidity < 100000)\n      return { question: market.question, decision: 'hold', reason: `流动性不足 $${(market.liquidity/1000).toFixed(0)}k` };\n    if (market.volume < 150000)\n      return { question: market.question, decision: 'hold', reason: `成交量不足 $${(market.volume/1000).toFixed(0)}k` };\n    if (spreadPct > 0.03)\n      return { question: market.question, decision: 'hold', reason: `价差过大 ${(spreadPct*100).toFixed(1)}%` };\n    if (mktYes < 0.03 || mktYes > 0.85)\n      return { question: market.question, decision: 'hold', reason: `Yes价格越界 ${(mktYes*100).toFixed(1)}%` };\n\n    // ── Distance zone ────────────────────────────────────\n    const pctDist  = Math.abs((market.strike - spot) / spot);\n    const zone     = pctDist < 0.06 ? 'near' : pctDist < 0.14 ? 'mid' : 'far';\n    const isUpper  = market.strike > spot;\n    const sortedGroup = isUpper ? upperMarkets : lowerMarkets;\n\n    // ── Baseline: bsOneTouch ─────────────────────────────\n    let pYes0;\n    try { pYes0 = ctx.helpers.bsOneTouch(mCtx); }\n    catch(e) { return { question: market.question, decision: 'hold', reason: `定价失败: ${e}` }; }\n\n    // ── Trend adjustment in log-odds space ───────────────\n    const trendDir  = isUpper ? 1 : -1;\n    const maxShift  = zone === 'near' ? 0.08 : zone === 'mid' ? 0.05 : 0.03;\n    // Convert maxShift (probability domain) to logit units scaled by trend intensity\n    const trendShift = trendDir * (trendScore / 2) * logit(clamp(0.5 + maxShift)) * 2;\n\n    const pYesAdj = sigmoid(logit(clamp(pYes0)) + trendShift);\n\n    // ── Probs & edges via helper ─────────────────────────\n    const probs = ctx.helpers.binaryProbsFromYesProb(mCtx, pYesAdj);\n    const edges = ctx.helpers.edgeFromProbs(probs, mCtx);\n\n    // Find Yes/No edges by outcome index alignment\n    // probs[0] aligns to outcomes[0], probs[1] to outcomes[1]\n    const yesOutcomeIdx = market.outcomes.findIndex(o => String(o.label??'').toLowerCase()==='yes');\n    const noOutcomeIdx  = yesOutcomeIdx === 0 ? 1 : 0;\n    const yesEdgeObj    = edges[yesOutcomeIdx];\n    const noEdgeObj     = edges[noOutcomeIdx];\n\n    const modelYes = pYesAdj;\n    const modelNo  = 1 - pYesAdj;\n    const yesAdv   = modelYes - mktYes;\n    const noAdv    = modelNo  - (mktNo ?? 1 - mktYes);\n\n    // ── Signal rules ─────────────────────────────────────\n    const canBuyYes = (\n      (zone === 'near' || zone === 'mid') &&\n      yesAdv >= YES_EDGE_THR &&\n      (isUpper ? trendScore >= 0 : trendScore <= 0) &&\n      isStructurallyCheap(market, sortedGroup)\n    );\n\n    const canBuyNo = (\n      (zone === 'mid' || zone === 'far') &&\n      noAdv >= NO_EDGE_THR &&\n      !(zone === 'near' && Math.abs(trendScore) >= 1)\n    );\n\n    const hoursLeft = market.hoursToExpiry;\n    const timeDecayNo = (zone === 'far' && hoursLeft <= 168 && noAdv >= 0.03) ||\n                        (zone === 'mid' && hoursLeft <= 72  && noAdv >= 0.03);\n\n    let decision = 'hold', side = null, edge = 0, reason = '';\n\n    if (canBuyYes && (yesEdgeObj?.edge ?? 0) >= YES_EDGE_THR) {\n      decision = 'buy'; side = 'Yes'; edge = yesEdgeObj.edge;\n      reason = `近/中端顺势Yes，模型-市场=${(yesAdv*100).toFixed(1)}%，zone=${zone}，TrendScore=${trendScore.toFixed(1)}`;\n    } else if ((canBuyNo || timeDecayNo) && (noEdgeObj?.edge ?? 0) >= NO_EDGE_THR) {\n      decision = 'buy'; side = 'No'; edge = noEdgeObj.edge;\n      reason = timeDecayNo && !canBuyNo\n        ? `时间衰减No（${hoursLeft.toFixed(0)}h剩余），优势=${(noAdv*100).toFixed(1)}%`\n        : `中远端No，模型优势=${(noAdv*100).toFixed(1)}%，zone=${zone}`;\n    } else {\n      reason = yesAdv > 0 && yesAdv < YES_EDGE_THR ? `Yes优势不足 ${(yesAdv*100).toFixed(1)}% < 6%` :\n               noAdv > 0 && noAdv < NO_EDGE_THR    ? `No优势不足 ${(noAdv*100).toFixed(1)}% < 4%` :\n               zone === 'far' && yesAdv > 0         ? '远端拒绝买Yes' :\n               !isStructurallyCheap(market, sortedGroup) ? '结构定价合理，无错价' :\n               `无显著优势（Yes=${(yesAdv*100).toFixed(1)}%, No=${(noAdv*100).toFixed(1)}%）`;\n    }\n\n    return {\n      question: market.question,\n      strike: market.strike,\n      zone,\n      hoursToExpiry: Math.round(hoursLeft),\n      mktYes: parseFloat((mktYes*100).toFixed(1)),\n      modelYes: parseFloat((pYes0*100).toFixed(1)),\n      modelYesAdj: parseFloat((pYesAdj*100).toFixed(1)),\n      yesAdv: parseFloat((yesAdv*100).toFixed(1)),\n      noAdv: parseFloat((noAdv*100).toFixed(1)),\n      trendScore,\n      decision,\n      side,\n      edge: parseFloat((edge*100).toFixed(2)),\n      reason,\n    };\n  } catch(err) {\n    return { question: market.question, decision: 'hold', reason: String(err) };\n  }\n});\n",
+  "durationMs": 0,
+  "result": [
+    {
+      "question": "Will Bitcoin dip to $60,000 in April?",
+      "decision": "hold",
+      "strike": 60000,
+      "zone": "far",
+      "hoursToExpiry": 338,
+      "mktYes": 4.5,
+      "modelYes": 0,
+      "modelYesAdj": 0,
+      "yesAdv": -4.5,
+      "noAdv": 4.5,
+      "trendScore": 0.5,
+      "side": null,
+      "edge": 0,
+      "reason": "无显著优势（Yes=-4.5%, No=4.5%）"
+    },
+    {
+      "question": "Will Bitcoin dip to $55,000 in April?",
+      "decision": "hold",
+      "reason": "Yes价格越界 1.7%"
+    },
+    {
+      "question": "Will Bitcoin dip to $50,000 in April?",
+      "decision": "hold",
+      "reason": "Yes价格越界 0.9%"
+    },
+    {
+      "question": "Will Bitcoin dip to $35,000 in April?",
+      "decision": "hold",
+      "reason": "Yes价格越界 0.4%"
+    },
+    {
+      "question": "Will Bitcoin reach $150,000 in April?",
+      "decision": "hold",
+      "reason": "Yes价格越界 0.3%"
+    },
+    {
+      "question": "Will Bitcoin reach $100,000 in April?",
+      "decision": "hold",
+      "reason": "流动性不足 $91k"
+    },
+    {
+      "question": "Will Bitcoin reach $95,000 in April?",
+      "decision": "hold",
+      "reason": "Yes价格越界 1.4%"
+    },
+    {
+      "question": "Will Bitcoin reach $90,000 in April?",
+      "decision": "hold",
+      "reason": "Yes价格越界 2.3%"
+    },
+    {
+      "question": "Will Bitcoin reach $85,000 in April?",
+      "decision": "buy",
+      "strike": 85000,
+      "zone": "mid",
+      "hoursToExpiry": 338,
+      "mktYes": 6.5,
+      "modelYes": 0.9,
+      "modelYesAdj": 0.9,
+      "yesAdv": -5.5,
+      "noAdv": 5.5,
+      "trendScore": 0.5,
+      "side": "No",
+      "edge": 5.35,
+      "reason": "中远端No，模型优势=5.5%，zone=mid"
+    },
+    {
+      "question": "Will Bitcoin reach $75,000 in April?",
+      "decision": "hold",
+      "reason": "已关闭或到期"
+    },
+    {
+      "question": "Will Bitcoin dip to $65,000 in April?",
+      "decision": "buy",
+      "strike": 65000,
+      "zone": "mid",
+      "hoursToExpiry": 338,
+      "mktYes": 14.5,
+      "modelYes": 0.4,
+      "modelYesAdj": 0.4,
+      "yesAdv": -14.1,
+      "noAdv": 14.1,
+      "trendScore": 0.5,
+      "side": "No",
+      "edge": 13.65,
+      "reason": "中远端No，模型优势=14.1%，zone=mid"
+    },
+    {
+      "question": "Will Bitcoin dip to $45,000 in April?",
+      "decision": "hold",
+      "reason": "Yes价格越界 0.8%"
+    },
+    {
+      "question": "Will Bitcoin dip to $25,000 in April?",
+      "decision": "hold",
+      "reason": "Yes价格越界 0.3%"
+    },
+    {
+      "question": "Will Bitcoin reach $110,000 in April?",
+      "decision": "hold",
+      "reason": "Yes价格越界 0.3%"
+    },
+    {
+      "question": "Will Bitcoin reach $105,000 in April?",
+      "decision": "hold",
+      "reason": "Yes价格越界 0.3%"
+    },
+    {
+      "question": "Will Bitcoin reach $80,000 in April?",
+      "decision": "buy",
+      "strike": 80000,
+      "zone": "mid",
+      "hoursToExpiry": 338,
+      "mktYes": 32.5,
+      "modelYes": 16.7,
+      "modelYesAdj": 18.2,
+      "yesAdv": -14.3,
+      "noAdv": 14.3,
+      "trendScore": 0.5,
+      "side": "No",
+      "edge": 13.84,
+      "reason": "中远端No，模型优势=14.3%，zone=mid"
+    },
+    {
+      "question": "Will Bitcoin dip to $20,000 in April?",
+      "decision": "hold",
+      "reason": "Yes价格越界 0.3%"
+    },
+    {
+      "question": "Will Bitcoin reach $70,000 in April?",
+      "decision": "hold",
+      "reason": "已关闭或到期"
+    },
+    {
+      "question": "Will Bitcoin dip to $40,000 in April?",
+      "decision": "hold",
+      "reason": "Yes价格越界 0.4%"
+    },
+    {
+      "question": "Will Bitcoin dip to $30,000 in April?",
+      "decision": "hold",
+      "reason": "Yes价格越界 0.4%"
+    }
+  ]
+}

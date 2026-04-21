@@ -1,0 +1,2329 @@
+{
+  "schemaVersion": 1,
+  "timestamp": "2026-04-15T08:35:23.622Z",
+  "status": "success",
+  "ctxPath": "/tmp/polymarket-ctx-bitcoin-price-on-april-15-20065-574c4f53.json",
+  "helpersModulePath": "/Users/linxuan/Desktop/claude_code_research/claude-code/.claude/skills/polymarket-strategy/helpers.ts",
+  "code": "\nconst closes = ctx.underlying.klines.map((k) => k.close);\nconst rsiVal = ctx.helpers.rsi(closes, 14);\nconst emaFast = ctx.helpers.emaArray(closes, 8).at(-1);\nconst emaSlow = ctx.helpers.emaArray(closes, 21).at(-1);\nconst emaTrend = emaFast > emaSlow ? 1 : -1;\nconst momentum4h = (closes.at(-1) - closes.at(-5)) / closes.at(-5);\n\n// Vol ratio computed directly from realizedVol object\nconst rv = ctx.underlying.realizedVol;\nconst volShort = rv['1h'];\nconst volLong  = rv['24h'];\nconst volRatio = volShort / volLong;\n\nreturn ctx.markets.map((market) => {\n  const mCtx = { market, underlying: ctx.underlying, timing: { ...ctx.timing, expiryTs: market.expiryTs } };\n\n  if (market.closed || market.hoursToExpiry < 0) {\n    return { question: market.question, questionType: market.questionType, side: \"hold\", reason: \"closed/expired\" };\n  }\n\n  try {\n    let base;\n    switch (market.questionType) {\n      case \"above\": {\n        const bsP = ctx.helpers.bsAbove(mCtx);\n        const adj = momentum4h * 2.5 + emaTrend * 0.02;\n        base = ctx.helpers.binaryProbsFromYesProb(mCtx, Math.max(0.001, Math.min(0.999, bsP + adj)));\n        break;\n      }\n      case \"below\": {\n        const bsP = 1 - ctx.helpers.bsAbove(mCtx);\n        const adj = -momentum4h * 2.5 - emaTrend * 0.02;\n        base = ctx.helpers.binaryProbsFromYesProb(mCtx, Math.max(0.001, Math.min(0.999, bsP + adj)));\n        break;\n      }\n      case \"range\": {\n        const bsP = ctx.helpers.bsRange(mCtx);\n        const dist = ctx.helpers.distanceToRangeMid(mCtx);\n        const distAdj = -Math.abs(dist) * 0.5;\n        const volAdj = volRatio > 1.3 ? -0.02 : 0;\n        const adjP = Math.max(0.001, Math.min(0.999, bsP + distAdj + volAdj));\n        base = ctx.helpers.binaryProbsFromYesProb(mCtx, adjP);\n        break;\n      }\n      default:\n        return { question: market.question, questionType: market.questionType, side: \"hold\", reason: `unsupported: ${market.questionType}` };\n    }\n\n    const probs = ctx.helpers.normalizeBinaryProbabilities(base);\n    const trade = ctx.helpers.bestBinaryTrade(probs, mCtx, { threshold: 0.05 });\n\n    return {\n      question: market.question,\n      questionType: market.questionType,\n      strike: market.strike,\n      strike2: market.strike2,\n      hoursToExpiry: +market.hoursToExpiry.toFixed(2),\n      outcomes: market.outcomes,\n      probs: probs.map(p => +p.toFixed(4)),\n      ...trade,\n    };\n  } catch (err) {\n    return { question: market.question, questionType: market.questionType, side: \"hold\", reason: String(err) };\n  }\n});\n",
+  "ctx": {
+    "event": {
+      "slug": "bitcoin-price-on-april-15",
+      "title": "Bitcoin price on April 15?"
+    },
+    "markets": [
+      {
+        "slug": "will-the-price-of-bitcoin-be-between-78000-80000-on-april-15",
+        "question": "Will the price of Bitcoin be between $78,000 and $80,000 on April 15?",
+        "questionType": "range",
+        "kind": "absolute",
+        "strike": 78000,
+        "strike2": 80000,
+        "parser": "rules",
+        "confidence": 1,
+        "expiryDate": "2026-04-15T16:00:00Z",
+        "expiryTs": 1776268800000,
+        "hoursToExpiry": 7.423795277777778,
+        "outcomes": [
+          {
+            "label": "Yes",
+            "price": 0.0015,
+            "bestBid": 0.001,
+            "bestAsk": 0.002
+          },
+          {
+            "label": "No",
+            "price": 0.9985,
+            "bestBid": 0.998,
+            "bestAsk": 0.999
+          }
+        ],
+        "volume": 41409.16954299998,
+        "liquidity": 26831.82679,
+        "active": true,
+        "closed": false
+      },
+      {
+        "slug": "will-the-price-of-bitcoin-be-less-than-62000-on-april-15",
+        "question": "Will the price of Bitcoin be less than $62,000 on April 15?",
+        "questionType": "below",
+        "kind": "absolute",
+        "strike": 62000,
+        "strike2": null,
+        "parser": "rules",
+        "confidence": 1,
+        "expiryDate": "2026-04-15T16:00:00Z",
+        "expiryTs": 1776268800000,
+        "hoursToExpiry": 7.423795,
+        "outcomes": [
+          {
+            "label": "Yes",
+            "price": 0.0005,
+            "bestBid": null,
+            "bestAsk": 0.001
+          },
+          {
+            "label": "No",
+            "price": 0.9995,
+            "bestBid": 0.999,
+            "bestAsk": null
+          }
+        ],
+        "volume": 21508.796788999996,
+        "liquidity": 94118.82807,
+        "active": true,
+        "closed": false
+      },
+      {
+        "slug": "will-the-price-of-bitcoin-be-between-62000-64000-on-april-15",
+        "question": "Will the price of Bitcoin be between $62,000 and $64,000 on April 15?",
+        "questionType": "range",
+        "kind": "absolute",
+        "strike": 62000,
+        "strike2": 64000,
+        "parser": "rules",
+        "confidence": 1,
+        "expiryDate": "2026-04-15T16:00:00Z",
+        "expiryTs": 1776268800000,
+        "hoursToExpiry": 7.423795,
+        "outcomes": [
+          {
+            "label": "Yes",
+            "price": 0.0005,
+            "bestBid": null,
+            "bestAsk": 0.001
+          },
+          {
+            "label": "No",
+            "price": 0.9995,
+            "bestBid": 0.999,
+            "bestAsk": null
+          }
+        ],
+        "volume": 27707.334302,
+        "liquidity": 52498.04048,
+        "active": true,
+        "closed": false
+      },
+      {
+        "slug": "will-the-price-of-bitcoin-be-between-64000-66000-on-april-15",
+        "question": "Will the price of Bitcoin be between $64,000 and $66,000 on April 15?",
+        "questionType": "range",
+        "kind": "absolute",
+        "strike": 64000,
+        "strike2": 66000,
+        "parser": "rules",
+        "confidence": 1,
+        "expiryDate": "2026-04-15T16:00:00Z",
+        "expiryTs": 1776268800000,
+        "hoursToExpiry": 7.423795,
+        "outcomes": [
+          {
+            "label": "Yes",
+            "price": 0.0005,
+            "bestBid": null,
+            "bestAsk": 0.001
+          },
+          {
+            "label": "No",
+            "price": 0.9995,
+            "bestBid": 0.999,
+            "bestAsk": null
+          }
+        ],
+        "volume": 38010.78077700001,
+        "liquidity": 47065.28965,
+        "active": true,
+        "closed": false
+      },
+      {
+        "slug": "will-the-price-of-bitcoin-be-between-66000-68000-on-april-15",
+        "question": "Will the price of Bitcoin be between $66,000 and $68,000 on April 15?",
+        "questionType": "range",
+        "kind": "absolute",
+        "strike": 66000,
+        "strike2": 68000,
+        "parser": "rules",
+        "confidence": 1,
+        "expiryDate": "2026-04-15T16:00:00Z",
+        "expiryTs": 1776268800000,
+        "hoursToExpiry": 7.423795,
+        "outcomes": [
+          {
+            "label": "Yes",
+            "price": 0.0005,
+            "bestBid": null,
+            "bestAsk": 0.001
+          },
+          {
+            "label": "No",
+            "price": 0.9995,
+            "bestBid": 0.999,
+            "bestAsk": null
+          }
+        ],
+        "volume": 42225.824017000006,
+        "liquidity": 20053.14851,
+        "active": true,
+        "closed": false
+      },
+      {
+        "slug": "will-the-price-of-bitcoin-be-between-68000-70000-on-april-15",
+        "question": "Will the price of Bitcoin be between $68,000 and $70,000 on April 15?",
+        "questionType": "range",
+        "kind": "absolute",
+        "strike": 68000,
+        "strike2": 70000,
+        "parser": "rules",
+        "confidence": 1,
+        "expiryDate": "2026-04-15T16:00:00Z",
+        "expiryTs": 1776268800000,
+        "hoursToExpiry": 7.423795,
+        "outcomes": [
+          {
+            "label": "Yes",
+            "price": 0.003,
+            "bestBid": 0.001,
+            "bestAsk": 0.005
+          },
+          {
+            "label": "No",
+            "price": 0.997,
+            "bestBid": 0.995,
+            "bestAsk": 0.999
+          }
+        ],
+        "volume": 147976.0301929999,
+        "liquidity": 17157.09957,
+        "active": true,
+        "closed": false
+      },
+      {
+        "slug": "will-the-price-of-bitcoin-be-between-70000-72000-on-april-15",
+        "question": "Will the price of Bitcoin be between $70,000 and $72,000 on April 15?",
+        "questionType": "range",
+        "kind": "absolute",
+        "strike": 70000,
+        "strike2": 72000,
+        "parser": "rules",
+        "confidence": 1,
+        "expiryDate": "2026-04-15T16:00:00Z",
+        "expiryTs": 1776268800000,
+        "hoursToExpiry": 7.423795,
+        "outcomes": [
+          {
+            "label": "Yes",
+            "price": 0.032,
+            "bestBid": 0.029,
+            "bestAsk": 0.03
+          },
+          {
+            "label": "No",
+            "price": 0.968,
+            "bestBid": 0.97,
+            "bestAsk": 0.971
+          }
+        ],
+        "volume": 30761.73520299999,
+        "liquidity": 20593.94962,
+        "active": true,
+        "closed": false
+      },
+      {
+        "slug": "will-the-price-of-bitcoin-be-between-72000-74000-on-april-15",
+        "question": "Will the price of Bitcoin be between $72,000 and $74,000 on April 15?",
+        "questionType": "range",
+        "kind": "absolute",
+        "strike": 72000,
+        "strike2": 74000,
+        "parser": "rules",
+        "confidence": 1,
+        "expiryDate": "2026-04-15T16:00:00Z",
+        "expiryTs": 1776268800000,
+        "hoursToExpiry": 7.423795,
+        "outcomes": [
+          {
+            "label": "Yes",
+            "price": 0.48,
+            "bestBid": 0.43,
+            "bestAsk": 0.44
+          },
+          {
+            "label": "No",
+            "price": 0.52,
+            "bestBid": 0.56,
+            "bestAsk": 0.57
+          }
+        ],
+        "volume": 15292.172584,
+        "liquidity": 24204.6492,
+        "active": true,
+        "closed": false
+      },
+      {
+        "slug": "will-the-price-of-bitcoin-be-between-74000-76000-on-april-15",
+        "question": "Will the price of Bitcoin be between $74,000 and $76,000 on April 15?",
+        "questionType": "range",
+        "kind": "absolute",
+        "strike": 74000,
+        "strike2": 76000,
+        "parser": "rules",
+        "confidence": 1,
+        "expiryDate": "2026-04-15T16:00:00Z",
+        "expiryTs": 1776268800000,
+        "hoursToExpiry": 7.423795,
+        "outcomes": [
+          {
+            "label": "Yes",
+            "price": 0.475,
+            "bestBid": 0.53,
+            "bestAsk": 0.54
+          },
+          {
+            "label": "No",
+            "price": 0.525,
+            "bestBid": 0.46,
+            "bestAsk": 0.47
+          }
+        ],
+        "volume": 25673.79837399999,
+        "liquidity": 23390.5608,
+        "active": true,
+        "closed": false
+      },
+      {
+        "slug": "will-the-price-of-bitcoin-be-between-76000-78000-on-april-15",
+        "question": "Will the price of Bitcoin be between $76,000 and $78,000 on April 15?",
+        "questionType": "range",
+        "kind": "absolute",
+        "strike": 76000,
+        "strike2": 78000,
+        "parser": "rules",
+        "confidence": 1,
+        "expiryDate": "2026-04-15T16:00:00Z",
+        "expiryTs": 1776268800000,
+        "hoursToExpiry": 7.423795,
+        "outcomes": [
+          {
+            "label": "Yes",
+            "price": 0.0255,
+            "bestBid": 0.029,
+            "bestAsk": 0.03
+          },
+          {
+            "label": "No",
+            "price": 0.9745,
+            "bestBid": 0.97,
+            "bestAsk": 0.971
+          }
+        ],
+        "volume": 24120.432518000012,
+        "liquidity": 22326.83716,
+        "active": true,
+        "closed": false
+      },
+      {
+        "slug": "will-the-price-of-bitcoin-be-greater-than-80000-on-april-15",
+        "question": "Will the price of Bitcoin be greater than $80,000 on April 15?",
+        "questionType": "above",
+        "kind": "absolute",
+        "strike": 80000,
+        "strike2": null,
+        "parser": "rules",
+        "confidence": 1,
+        "expiryDate": "2026-04-15T16:00:00Z",
+        "expiryTs": 1776268800000,
+        "hoursToExpiry": 7.423795,
+        "outcomes": [
+          {
+            "label": "Yes",
+            "price": 0.0005,
+            "bestBid": null,
+            "bestAsk": 0.001
+          },
+          {
+            "label": "No",
+            "price": 0.9995,
+            "bestBid": 0.999,
+            "bestAsk": null
+          }
+        ],
+        "volume": 129999.48688900004,
+        "liquidity": 23344.04856,
+        "active": true,
+        "closed": false
+      }
+    ],
+    "underlying": {
+      "symbol": "BTC",
+      "price": 74122.99,
+      "klines": [
+        {
+          "timestamp": 1775523600000,
+          "open": 68775.71,
+          "high": 68900.63,
+          "low": 68352.52,
+          "close": 68400.01,
+          "volume": 682.14287
+        },
+        {
+          "timestamp": 1775527200000,
+          "open": 68400.01,
+          "high": 68713.92,
+          "low": 68273.34,
+          "close": 68674,
+          "volume": 382.32486
+        },
+        {
+          "timestamp": 1775530800000,
+          "open": 68674.01,
+          "high": 68800.94,
+          "low": 68625.59,
+          "close": 68779.21,
+          "volume": 449.64401
+        },
+        {
+          "timestamp": 1775534400000,
+          "open": 68779.2,
+          "high": 68981.83,
+          "low": 68540.84,
+          "close": 68854.65,
+          "volume": 480.37449
+        },
+        {
+          "timestamp": 1775538000000,
+          "open": 68854.65,
+          "high": 68866,
+          "low": 68613.2,
+          "close": 68669,
+          "volume": 546.70209
+        },
+        {
+          "timestamp": 1775541600000,
+          "open": 68669,
+          "high": 68669.01,
+          "low": 68443,
+          "close": 68568.35,
+          "volume": 488.73987
+        },
+        {
+          "timestamp": 1775545200000,
+          "open": 68568.35,
+          "high": 68703.72,
+          "low": 68500,
+          "close": 68624.61,
+          "volume": 307.81904
+        },
+        {
+          "timestamp": 1775548800000,
+          "open": 68624.6,
+          "high": 68984.48,
+          "low": 68603.6,
+          "close": 68936.71,
+          "volume": 338.93457
+        },
+        {
+          "timestamp": 1775552400000,
+          "open": 68936.71,
+          "high": 69247.9,
+          "low": 68930.04,
+          "close": 69150.05,
+          "volume": 436.92801
+        },
+        {
+          "timestamp": 1775556000000,
+          "open": 69150.06,
+          "high": 69199.87,
+          "low": 68200,
+          "close": 68237.93,
+          "volume": 899.01254
+        },
+        {
+          "timestamp": 1775559600000,
+          "open": 68237.93,
+          "high": 68455.96,
+          "low": 68071.96,
+          "close": 68345.75,
+          "volume": 598.71022
+        },
+        {
+          "timestamp": 1775563200000,
+          "open": 68345.75,
+          "high": 68599.13,
+          "low": 68080,
+          "close": 68392.18,
+          "volume": 738.67705
+        },
+        {
+          "timestamp": 1775566800000,
+          "open": 68392.19,
+          "high": 68633.87,
+          "low": 68198.12,
+          "close": 68231.99,
+          "volume": 822.0611
+        },
+        {
+          "timestamp": 1775570400000,
+          "open": 68231.99,
+          "high": 68258.26,
+          "low": 67763.64,
+          "close": 67860.48,
+          "volume": 1396.10082
+        },
+        {
+          "timestamp": 1775574000000,
+          "open": 67860.49,
+          "high": 68268.6,
+          "low": 67732.01,
+          "close": 68168.1,
+          "volume": 1084.45539
+        },
+        {
+          "timestamp": 1775577600000,
+          "open": 68168.11,
+          "high": 68454.23,
+          "low": 68085.01,
+          "close": 68229.99,
+          "volume": 654.26405
+        },
+        {
+          "timestamp": 1775581200000,
+          "open": 68230,
+          "high": 69000,
+          "low": 68198.22,
+          "close": 68705.81,
+          "volume": 1147.70463
+        },
+        {
+          "timestamp": 1775584800000,
+          "open": 68705.82,
+          "high": 68773.24,
+          "low": 68358.1,
+          "close": 68442.53,
+          "volume": 630.41269
+        },
+        {
+          "timestamp": 1775588400000,
+          "open": 68442.52,
+          "high": 69098.44,
+          "low": 68358.1,
+          "close": 69011.29,
+          "volume": 1385.03929
+        },
+        {
+          "timestamp": 1775592000000,
+          "open": 69011.29,
+          "high": 69535.26,
+          "low": 69011.29,
+          "close": 69319.39,
+          "volume": 1097.55478
+        },
+        {
+          "timestamp": 1775595600000,
+          "open": 69319.39,
+          "high": 70216.68,
+          "low": 69311.84,
+          "close": 69927.64,
+          "volume": 1742.03489
+        },
+        {
+          "timestamp": 1775599200000,
+          "open": 69927.65,
+          "high": 71528,
+          "low": 69927.65,
+          "close": 71514.09,
+          "volume": 2841.66596
+        },
+        {
+          "timestamp": 1775602800000,
+          "open": 71514.1,
+          "high": 72761,
+          "low": 71194.9,
+          "close": 71924.22,
+          "volume": 3690.98922
+        },
+        {
+          "timestamp": 1775606400000,
+          "open": 71924.22,
+          "high": 72110.65,
+          "low": 71541.51,
+          "close": 71710.19,
+          "volume": 1153.45069
+        },
+        {
+          "timestamp": 1775610000000,
+          "open": 71710.19,
+          "high": 71758.6,
+          "low": 71452.68,
+          "close": 71476.97,
+          "volume": 621.6206
+        },
+        {
+          "timestamp": 1775613600000,
+          "open": 71476.98,
+          "high": 71727.01,
+          "low": 71240.99,
+          "close": 71364.94,
+          "volume": 1153.76247
+        },
+        {
+          "timestamp": 1775617200000,
+          "open": 71364.95,
+          "high": 71479.97,
+          "low": 71277.18,
+          "close": 71287.39,
+          "volume": 441.23135
+        },
+        {
+          "timestamp": 1775620800000,
+          "open": 71287.39,
+          "high": 71676.77,
+          "low": 71287.38,
+          "close": 71566.18,
+          "volume": 721.11279
+        },
+        {
+          "timestamp": 1775624400000,
+          "open": 71566.66,
+          "high": 71831.6,
+          "low": 71560,
+          "close": 71731.1,
+          "volume": 821.79755
+        },
+        {
+          "timestamp": 1775628000000,
+          "open": 71731.1,
+          "high": 71941.42,
+          "low": 71581.14,
+          "close": 71732.69,
+          "volume": 811.19618
+        },
+        {
+          "timestamp": 1775631600000,
+          "open": 71732.7,
+          "high": 71902,
+          "low": 71573.04,
+          "close": 71627.59,
+          "volume": 943.84918
+        },
+        {
+          "timestamp": 1775635200000,
+          "open": 71627.59,
+          "high": 71831.08,
+          "low": 71627.59,
+          "close": 71800,
+          "volume": 501.15204
+        },
+        {
+          "timestamp": 1775638800000,
+          "open": 71799.99,
+          "high": 71955,
+          "low": 71588.75,
+          "close": 71678.87,
+          "volume": 419.9995
+        },
+        {
+          "timestamp": 1775642400000,
+          "open": 71678.87,
+          "high": 71790,
+          "low": 71457.61,
+          "close": 71476.98,
+          "volume": 514.219
+        },
+        {
+          "timestamp": 1775646000000,
+          "open": 71476.97,
+          "high": 71739.67,
+          "low": 71407.77,
+          "close": 71675.12,
+          "volume": 779.27898
+        },
+        {
+          "timestamp": 1775649600000,
+          "open": 71675.12,
+          "high": 72181.81,
+          "low": 71581.76,
+          "close": 72071.95,
+          "volume": 1226.00544
+        },
+        {
+          "timestamp": 1775653200000,
+          "open": 72071.95,
+          "high": 72857,
+          "low": 71510,
+          "close": 71600.01,
+          "volume": 2821.31683
+        },
+        {
+          "timestamp": 1775656800000,
+          "open": 71600,
+          "high": 71751.42,
+          "low": 70707.23,
+          "close": 70912.88,
+          "volume": 1895.54834
+        },
+        {
+          "timestamp": 1775660400000,
+          "open": 70912.89,
+          "high": 71349.05,
+          "low": 70833.3,
+          "close": 71310,
+          "volume": 873.16856
+        },
+        {
+          "timestamp": 1775664000000,
+          "open": 71309.99,
+          "high": 71699,
+          "low": 71250.93,
+          "close": 71602.1,
+          "volume": 757.94566
+        },
+        {
+          "timestamp": 1775667600000,
+          "open": 71602.11,
+          "high": 71963.94,
+          "low": 71490.55,
+          "close": 71888.19,
+          "volume": 682.09647
+        },
+        {
+          "timestamp": 1775671200000,
+          "open": 71888.19,
+          "high": 71888.2,
+          "low": 71085.22,
+          "close": 71099.63,
+          "volume": 703.75724
+        },
+        {
+          "timestamp": 1775674800000,
+          "open": 71099.63,
+          "high": 71372.22,
+          "low": 71019,
+          "close": 71318.48,
+          "volume": 473.49397
+        },
+        {
+          "timestamp": 1775678400000,
+          "open": 71318.47,
+          "high": 71481.7,
+          "low": 71267.91,
+          "close": 71372.93,
+          "volume": 226.24698
+        },
+        {
+          "timestamp": 1775682000000,
+          "open": 71372.94,
+          "high": 71748,
+          "low": 71330.86,
+          "close": 71551.39,
+          "volume": 367.89907
+        },
+        {
+          "timestamp": 1775685600000,
+          "open": 71551.4,
+          "high": 71571.6,
+          "low": 71064.84,
+          "close": 71064.84,
+          "volume": 374.67564
+        },
+        {
+          "timestamp": 1775689200000,
+          "open": 71064.84,
+          "high": 71204,
+          "low": 70901.89,
+          "close": 71069.93,
+          "volume": 517.86174
+        },
+        {
+          "timestamp": 1775692800000,
+          "open": 71069.93,
+          "high": 71133.71,
+          "low": 70650,
+          "close": 70815.5,
+          "volume": 677.85142
+        },
+        {
+          "timestamp": 1775696400000,
+          "open": 70815.5,
+          "high": 70956.7,
+          "low": 70466,
+          "close": 70928.89,
+          "volume": 495.03665
+        },
+        {
+          "timestamp": 1775700000000,
+          "open": 70928.9,
+          "high": 71198.8,
+          "low": 70816.36,
+          "close": 71060.64,
+          "volume": 664.15391
+        },
+        {
+          "timestamp": 1775703600000,
+          "open": 71060.64,
+          "high": 71124.05,
+          "low": 70845.27,
+          "close": 70992.39,
+          "volume": 808.25356
+        },
+        {
+          "timestamp": 1775707200000,
+          "open": 70992.37,
+          "high": 71006.13,
+          "low": 70734.77,
+          "close": 70782,
+          "volume": 304.15042
+        },
+        {
+          "timestamp": 1775710800000,
+          "open": 70781.99,
+          "high": 71087.12,
+          "low": 70689.38,
+          "close": 70984,
+          "volume": 495.401
+        },
+        {
+          "timestamp": 1775714400000,
+          "open": 70983.99,
+          "high": 71082.71,
+          "low": 70809.94,
+          "close": 71031.84,
+          "volume": 538.94746
+        },
+        {
+          "timestamp": 1775718000000,
+          "open": 71031.83,
+          "high": 71116,
+          "low": 70955.4,
+          "close": 70982.01,
+          "volume": 922.88611
+        },
+        {
+          "timestamp": 1775721600000,
+          "open": 70982.01,
+          "high": 71380,
+          "low": 70865.42,
+          "close": 71249.51,
+          "volume": 562.42694
+        },
+        {
+          "timestamp": 1775725200000,
+          "open": 71249.51,
+          "high": 71575,
+          "low": 71109.99,
+          "close": 71534.68,
+          "volume": 512.0201
+        },
+        {
+          "timestamp": 1775728800000,
+          "open": 71534.69,
+          "high": 71534.69,
+          "low": 71276.44,
+          "close": 71276.45,
+          "volume": 304.66693
+        },
+        {
+          "timestamp": 1775732400000,
+          "open": 71276.45,
+          "high": 71350,
+          "low": 71038.5,
+          "close": 71150.17,
+          "volume": 446.85377
+        },
+        {
+          "timestamp": 1775736000000,
+          "open": 71150.17,
+          "high": 71328.79,
+          "low": 71040,
+          "close": 71279.63,
+          "volume": 382.04593
+        },
+        {
+          "timestamp": 1775739600000,
+          "open": 71279.63,
+          "high": 71355.24,
+          "low": 70629.3,
+          "close": 70801.98,
+          "volume": 696.59545
+        },
+        {
+          "timestamp": 1775743200000,
+          "open": 70801.97,
+          "high": 71250.39,
+          "low": 70522.77,
+          "close": 71123.71,
+          "volume": 873.72309
+        },
+        {
+          "timestamp": 1775746800000,
+          "open": 71123.71,
+          "high": 72358,
+          "low": 70929.44,
+          "close": 72141.99,
+          "volume": 2048.75279
+        },
+        {
+          "timestamp": 1775750400000,
+          "open": 72142,
+          "high": 72399,
+          "low": 71729.66,
+          "close": 72080.87,
+          "volume": 1429.6831
+        },
+        {
+          "timestamp": 1775754000000,
+          "open": 72080.86,
+          "high": 72550,
+          "low": 72062.38,
+          "close": 72347.49,
+          "volume": 1415.90923
+        },
+        {
+          "timestamp": 1775757600000,
+          "open": 72348,
+          "high": 72380.7,
+          "low": 71747.68,
+          "close": 71888.69,
+          "volume": 560.32535
+        },
+        {
+          "timestamp": 1775761200000,
+          "open": 71888.69,
+          "high": 72300,
+          "low": 71750,
+          "close": 72096.32,
+          "volume": 607.89039
+        },
+        {
+          "timestamp": 1775764800000,
+          "open": 72096.33,
+          "high": 72458.31,
+          "low": 71985.95,
+          "close": 72413.97,
+          "volume": 497.89389
+        },
+        {
+          "timestamp": 1775768400000,
+          "open": 72413.96,
+          "high": 72700,
+          "low": 72142.79,
+          "close": 72264.95,
+          "volume": 771.79321
+        },
+        {
+          "timestamp": 1775772000000,
+          "open": 72264.96,
+          "high": 73145,
+          "low": 71945.94,
+          "close": 71946.01,
+          "volume": 1345.32358
+        },
+        {
+          "timestamp": 1775775600000,
+          "open": 71946.01,
+          "high": 72025.53,
+          "low": 71585.25,
+          "close": 71787.97,
+          "volume": 795.83731
+        },
+        {
+          "timestamp": 1775779200000,
+          "open": 71787.98,
+          "high": 72028.4,
+          "low": 71573.35,
+          "close": 71963.03,
+          "volume": 967.9743
+        },
+        {
+          "timestamp": 1775782800000,
+          "open": 71963.04,
+          "high": 72387,
+          "low": 71673.48,
+          "close": 72157.93,
+          "volume": 679.67117
+        },
+        {
+          "timestamp": 1775786400000,
+          "open": 72157.93,
+          "high": 72291.04,
+          "low": 71921.59,
+          "close": 71965.36,
+          "volume": 515.54191
+        },
+        {
+          "timestamp": 1775790000000,
+          "open": 71965.36,
+          "high": 72027.37,
+          "low": 71813.73,
+          "close": 71868.67,
+          "volume": 543.68867
+        },
+        {
+          "timestamp": 1775793600000,
+          "open": 71868.67,
+          "high": 72212.84,
+          "low": 71820.47,
+          "close": 72117.29,
+          "volume": 734.17151
+        },
+        {
+          "timestamp": 1775797200000,
+          "open": 72117.29,
+          "high": 72267.89,
+          "low": 72010.4,
+          "close": 72127.84,
+          "volume": 408.69549
+        },
+        {
+          "timestamp": 1775800800000,
+          "open": 72127.84,
+          "high": 72179.85,
+          "low": 71792.01,
+          "close": 71805.38,
+          "volume": 448.00931
+        },
+        {
+          "timestamp": 1775804400000,
+          "open": 71805.39,
+          "high": 71837.59,
+          "low": 71428,
+          "close": 71481.85,
+          "volume": 702.39043
+        },
+        {
+          "timestamp": 1775808000000,
+          "open": 71481.85,
+          "high": 71769.41,
+          "low": 71426.15,
+          "close": 71606.07,
+          "volume": 624.89096
+        },
+        {
+          "timestamp": 1775811600000,
+          "open": 71606.08,
+          "high": 71873,
+          "low": 71583.47,
+          "close": 71787.41,
+          "volume": 281.02303
+        },
+        {
+          "timestamp": 1775815200000,
+          "open": 71787.41,
+          "high": 71928.29,
+          "low": 71711.6,
+          "close": 71910.09,
+          "volume": 238.63388
+        },
+        {
+          "timestamp": 1775818800000,
+          "open": 71910.1,
+          "high": 72261.93,
+          "low": 71903.69,
+          "close": 72127.59,
+          "volume": 421.17579
+        },
+        {
+          "timestamp": 1775822400000,
+          "open": 72127.59,
+          "high": 72458,
+          "low": 72007.5,
+          "close": 72258.68,
+          "volume": 733.4245
+        },
+        {
+          "timestamp": 1775826000000,
+          "open": 72258.69,
+          "high": 72409.41,
+          "low": 71899.51,
+          "close": 72321.4,
+          "volume": 673.2668
+        },
+        {
+          "timestamp": 1775829600000,
+          "open": 72321.39,
+          "high": 73155.58,
+          "low": 72258,
+          "close": 72909,
+          "volume": 2362.6198
+        },
+        {
+          "timestamp": 1775833200000,
+          "open": 72909,
+          "high": 73289.96,
+          "low": 72355.87,
+          "close": 72460.51,
+          "volume": 1324.05053
+        },
+        {
+          "timestamp": 1775836800000,
+          "open": 72460.52,
+          "high": 73069.4,
+          "low": 72387.41,
+          "close": 72992.33,
+          "volume": 733.09003
+        },
+        {
+          "timestamp": 1775840400000,
+          "open": 72992.32,
+          "high": 73146,
+          "low": 72802.96,
+          "close": 73121.66,
+          "volume": 454.50524
+        },
+        {
+          "timestamp": 1775844000000,
+          "open": 73121.66,
+          "high": 73159.81,
+          "low": 72880.95,
+          "close": 73107.07,
+          "volume": 597.01721
+        },
+        {
+          "timestamp": 1775847600000,
+          "open": 73107.07,
+          "high": 73264.76,
+          "low": 72900,
+          "close": 73236.11,
+          "volume": 713.54118
+        },
+        {
+          "timestamp": 1775851200000,
+          "open": 73236.11,
+          "high": 73434,
+          "low": 73051.97,
+          "close": 73361.68,
+          "volume": 872.16866
+        },
+        {
+          "timestamp": 1775854800000,
+          "open": 73361.68,
+          "high": 73364.47,
+          "low": 72934.53,
+          "close": 73190.67,
+          "volume": 654.89865
+        },
+        {
+          "timestamp": 1775858400000,
+          "open": 73190.68,
+          "high": 73244.03,
+          "low": 72700.6,
+          "close": 72877,
+          "volume": 798.3469
+        },
+        {
+          "timestamp": 1775862000000,
+          "open": 72877.01,
+          "high": 72967.79,
+          "low": 72791.96,
+          "close": 72962.7,
+          "volume": 889.83693
+        },
+        {
+          "timestamp": 1775865600000,
+          "open": 72962.71,
+          "high": 72962.71,
+          "low": 72787.94,
+          "close": 72828.42,
+          "volume": 801.54149
+        },
+        {
+          "timestamp": 1775869200000,
+          "open": 72828.42,
+          "high": 72999.99,
+          "low": 72670,
+          "close": 72954.39,
+          "volume": 320.3002
+        },
+        {
+          "timestamp": 1775872800000,
+          "open": 72954.39,
+          "high": 73094.89,
+          "low": 72910.93,
+          "close": 72966.57,
+          "volume": 288.43552
+        },
+        {
+          "timestamp": 1775876400000,
+          "open": 72966.58,
+          "high": 73075.34,
+          "low": 72814.42,
+          "close": 72866.63,
+          "volume": 227.12944
+        },
+        {
+          "timestamp": 1775880000000,
+          "open": 72866.62,
+          "high": 72954.28,
+          "low": 72681.9,
+          "close": 72806.08,
+          "volume": 298.14959
+        },
+        {
+          "timestamp": 1775883600000,
+          "open": 72806.08,
+          "high": 72836.55,
+          "low": 72679.08,
+          "close": 72722.28,
+          "volume": 222.17067
+        },
+        {
+          "timestamp": 1775887200000,
+          "open": 72722.28,
+          "high": 72771.32,
+          "low": 72612.16,
+          "close": 72762,
+          "volume": 590.44339
+        },
+        {
+          "timestamp": 1775890800000,
+          "open": 72762.01,
+          "high": 72832,
+          "low": 72672.56,
+          "close": 72745.38,
+          "volume": 321.42327
+        },
+        {
+          "timestamp": 1775894400000,
+          "open": 72745.38,
+          "high": 72799.57,
+          "low": 72638.44,
+          "close": 72664.17,
+          "volume": 263.67236
+        },
+        {
+          "timestamp": 1775898000000,
+          "open": 72664.16,
+          "high": 72908,
+          "low": 72617.75,
+          "close": 72907.11,
+          "volume": 306.96352
+        },
+        {
+          "timestamp": 1775901600000,
+          "open": 72907.12,
+          "high": 72915.95,
+          "low": 72760.9,
+          "close": 72843.71,
+          "volume": 224.83128
+        },
+        {
+          "timestamp": 1775905200000,
+          "open": 72843.7,
+          "high": 72912,
+          "low": 72826.37,
+          "close": 72907.05,
+          "volume": 109.63598
+        },
+        {
+          "timestamp": 1775908800000,
+          "open": 72907.05,
+          "high": 72982.4,
+          "low": 72814.97,
+          "close": 72940.49,
+          "volume": 180.21756
+        },
+        {
+          "timestamp": 1775912400000,
+          "open": 72940.5,
+          "high": 72940.5,
+          "low": 72513.09,
+          "close": 72658.07,
+          "volume": 493.97275
+        },
+        {
+          "timestamp": 1775916000000,
+          "open": 72658.07,
+          "high": 72770.91,
+          "low": 72609.27,
+          "close": 72704.67,
+          "volume": 212.83973
+        },
+        {
+          "timestamp": 1775919600000,
+          "open": 72704.66,
+          "high": 72896.03,
+          "low": 72678,
+          "close": 72858.17,
+          "volume": 246.74388
+        },
+        {
+          "timestamp": 1775923200000,
+          "open": 72858.18,
+          "high": 73204.74,
+          "low": 72812.94,
+          "close": 73034.33,
+          "volume": 656.04744
+        },
+        {
+          "timestamp": 1775926800000,
+          "open": 73034.34,
+          "high": 73169.04,
+          "low": 72942.06,
+          "close": 73095.97,
+          "volume": 269.56328
+        },
+        {
+          "timestamp": 1775930400000,
+          "open": 73095.97,
+          "high": 73726.13,
+          "low": 73032.61,
+          "close": 73547.89,
+          "volume": 856.65701
+        },
+        {
+          "timestamp": 1775934000000,
+          "open": 73547.9,
+          "high": 73790,
+          "low": 73472.38,
+          "close": 73687.15,
+          "volume": 595.037
+        },
+        {
+          "timestamp": 1775937600000,
+          "open": 73687.16,
+          "high": 73689.97,
+          "low": 73226.28,
+          "close": 73290.43,
+          "volume": 395.49217
+        },
+        {
+          "timestamp": 1775941200000,
+          "open": 73290.43,
+          "high": 73548.08,
+          "low": 73200.48,
+          "close": 73427.04,
+          "volume": 366.94025
+        },
+        {
+          "timestamp": 1775944800000,
+          "open": 73427.04,
+          "high": 73574,
+          "low": 73234.25,
+          "close": 73376.01,
+          "volume": 431.15797
+        },
+        {
+          "timestamp": 1775948400000,
+          "open": 73376.01,
+          "high": 73376.01,
+          "low": 72907.4,
+          "close": 73043.16,
+          "volume": 391.57799
+        },
+        {
+          "timestamp": 1775952000000,
+          "open": 73043.16,
+          "high": 73117.32,
+          "low": 72873.25,
+          "close": 73079.96,
+          "volume": 390.45862
+        },
+        {
+          "timestamp": 1775955600000,
+          "open": 73079.96,
+          "high": 73137.24,
+          "low": 71310,
+          "close": 71643.69,
+          "volume": 2072.10202
+        },
+        {
+          "timestamp": 1775959200000,
+          "open": 71643.69,
+          "high": 71982.46,
+          "low": 71352.47,
+          "close": 71761.35,
+          "volume": 839.35622
+        },
+        {
+          "timestamp": 1775962800000,
+          "open": 71761.35,
+          "high": 71861.33,
+          "low": 71593.18,
+          "close": 71593.19,
+          "volume": 790.20901
+        },
+        {
+          "timestamp": 1775966400000,
+          "open": 71593.18,
+          "high": 71685.31,
+          "low": 71444.68,
+          "close": 71466.53,
+          "volume": 611.50691
+        },
+        {
+          "timestamp": 1775970000000,
+          "open": 71466.53,
+          "high": 71781,
+          "low": 71417.22,
+          "close": 71710.2,
+          "volume": 667.76838
+        },
+        {
+          "timestamp": 1775973600000,
+          "open": 71710.19,
+          "high": 71753.33,
+          "low": 71633.77,
+          "close": 71668.01,
+          "volume": 377.10612
+        },
+        {
+          "timestamp": 1775977200000,
+          "open": 71668.01,
+          "high": 71747.31,
+          "low": 71588.57,
+          "close": 71665,
+          "volume": 313.33908
+        },
+        {
+          "timestamp": 1775980800000,
+          "open": 71664.99,
+          "high": 71805.85,
+          "low": 71595,
+          "close": 71629.21,
+          "volume": 922.36362
+        },
+        {
+          "timestamp": 1775984400000,
+          "open": 71629.21,
+          "high": 71633.01,
+          "low": 71488.45,
+          "close": 71531.94,
+          "volume": 372.12981
+        },
+        {
+          "timestamp": 1775988000000,
+          "open": 71531.95,
+          "high": 71682.72,
+          "low": 71357.76,
+          "close": 71452.89,
+          "volume": 274.78665
+        },
+        {
+          "timestamp": 1775991600000,
+          "open": 71452.89,
+          "high": 71556.12,
+          "low": 71412.57,
+          "close": 71468.55,
+          "volume": 211.53603
+        },
+        {
+          "timestamp": 1775995200000,
+          "open": 71468.54,
+          "high": 71500,
+          "low": 71077.44,
+          "close": 71084.01,
+          "volume": 608.12473
+        },
+        {
+          "timestamp": 1775998800000,
+          "open": 71084.01,
+          "high": 71146.03,
+          "low": 70866.82,
+          "close": 70889.42,
+          "volume": 708.82478
+        },
+        {
+          "timestamp": 1776002400000,
+          "open": 70889.42,
+          "high": 71092.78,
+          "low": 70700,
+          "close": 70748.34,
+          "volume": 541.94034
+        },
+        {
+          "timestamp": 1776006000000,
+          "open": 70748.34,
+          "high": 70932,
+          "low": 70604.07,
+          "close": 70892.03,
+          "volume": 502.43194
+        },
+        {
+          "timestamp": 1776009600000,
+          "open": 70892.04,
+          "high": 70959.51,
+          "low": 70821.05,
+          "close": 70936.27,
+          "volume": 259.94883
+        },
+        {
+          "timestamp": 1776013200000,
+          "open": 70936.27,
+          "high": 71202,
+          "low": 70900,
+          "close": 71140.51,
+          "volume": 322.7326
+        },
+        {
+          "timestamp": 1776016800000,
+          "open": 71140.51,
+          "high": 71214.08,
+          "low": 71056.2,
+          "close": 71137.64,
+          "volume": 176.22609
+        },
+        {
+          "timestamp": 1776020400000,
+          "open": 71137.65,
+          "high": 71222.58,
+          "low": 71078.76,
+          "close": 71084.18,
+          "volume": 233.07874
+        },
+        {
+          "timestamp": 1776024000000,
+          "open": 71084.18,
+          "high": 71440,
+          "low": 70956.83,
+          "close": 71335.43,
+          "volume": 622.27061
+        },
+        {
+          "timestamp": 1776027600000,
+          "open": 71335.43,
+          "high": 71452,
+          "low": 71163.01,
+          "close": 71364.02,
+          "volume": 234.93742
+        },
+        {
+          "timestamp": 1776031200000,
+          "open": 71364.03,
+          "high": 71367.85,
+          "low": 70505.88,
+          "close": 70912.73,
+          "volume": 908.94869
+        },
+        {
+          "timestamp": 1776034800000,
+          "open": 70912.73,
+          "high": 70912.73,
+          "low": 70571.66,
+          "close": 70740.98,
+          "volume": 510.34077
+        },
+        {
+          "timestamp": 1776038400000,
+          "open": 70741.56,
+          "high": 71262.63,
+          "low": 70615.3,
+          "close": 71172.62,
+          "volume": 546.73984
+        },
+        {
+          "timestamp": 1776042000000,
+          "open": 71172.63,
+          "high": 71227.28,
+          "low": 71027.26,
+          "close": 71197.64,
+          "volume": 720.27854
+        },
+        {
+          "timestamp": 1776045600000,
+          "open": 71197.64,
+          "high": 71271.78,
+          "low": 70986.71,
+          "close": 71073.14,
+          "volume": 270.71272
+        },
+        {
+          "timestamp": 1776049200000,
+          "open": 71073.14,
+          "high": 71155.42,
+          "low": 70917.27,
+          "close": 70976,
+          "volume": 348.9161
+        },
+        {
+          "timestamp": 1776052800000,
+          "open": 70975.99,
+          "high": 71144,
+          "low": 70854.29,
+          "close": 70890.3,
+          "volume": 584.47308
+        },
+        {
+          "timestamp": 1776056400000,
+          "open": 70890.3,
+          "high": 70920,
+          "low": 70672.72,
+          "close": 70878.82,
+          "volume": 533.46945
+        },
+        {
+          "timestamp": 1776060000000,
+          "open": 70878.82,
+          "high": 71106.54,
+          "low": 70878.82,
+          "close": 71017.66,
+          "volume": 697.01918
+        },
+        {
+          "timestamp": 1776063600000,
+          "open": 71017.66,
+          "high": 71067.91,
+          "low": 70685.25,
+          "close": 70813.88,
+          "volume": 859.13978
+        },
+        {
+          "timestamp": 1776067200000,
+          "open": 70813.88,
+          "high": 70861.01,
+          "low": 70566.99,
+          "close": 70680.7,
+          "volume": 334.12518
+        },
+        {
+          "timestamp": 1776070800000,
+          "open": 70680.7,
+          "high": 70910.68,
+          "low": 70678,
+          "close": 70792.88,
+          "volume": 250.58431
+        },
+        {
+          "timestamp": 1776074400000,
+          "open": 70792.89,
+          "high": 70846.9,
+          "low": 70688.28,
+          "close": 70755.88,
+          "volume": 177.99631
+        },
+        {
+          "timestamp": 1776078000000,
+          "open": 70755.89,
+          "high": 70997.12,
+          "low": 70736.29,
+          "close": 70929.68,
+          "volume": 260.33899
+        },
+        {
+          "timestamp": 1776081600000,
+          "open": 70929.68,
+          "high": 71219.8,
+          "low": 70758.5,
+          "close": 71074.91,
+          "volume": 460.129
+        },
+        {
+          "timestamp": 1776085200000,
+          "open": 71074.92,
+          "high": 71700.82,
+          "low": 70818.57,
+          "close": 71662.65,
+          "volume": 1544.74455
+        },
+        {
+          "timestamp": 1776088800000,
+          "open": 71662.65,
+          "high": 72401,
+          "low": 71375.24,
+          "close": 72400.15,
+          "volume": 2098.23774
+        },
+        {
+          "timestamp": 1776092400000,
+          "open": 72400.15,
+          "high": 72464.28,
+          "low": 71652.65,
+          "close": 71866.59,
+          "volume": 1342.3378
+        },
+        {
+          "timestamp": 1776096000000,
+          "open": 71866.59,
+          "high": 72437.25,
+          "low": 71679.8,
+          "close": 72202.36,
+          "volume": 1514.19404
+        },
+        {
+          "timestamp": 1776099600000,
+          "open": 72202.37,
+          "high": 72600,
+          "low": 72069.01,
+          "close": 72148.87,
+          "volume": 1653.64723
+        },
+        {
+          "timestamp": 1776103200000,
+          "open": 72148.87,
+          "high": 72460.42,
+          "low": 72053.78,
+          "close": 72424.86,
+          "volume": 965.95939
+        },
+        {
+          "timestamp": 1776106800000,
+          "open": 72424.86,
+          "high": 73480,
+          "low": 72298.93,
+          "close": 73322.82,
+          "volume": 2632.95065
+        },
+        {
+          "timestamp": 1776110400000,
+          "open": 73322,
+          "high": 73394.37,
+          "low": 73007.08,
+          "close": 73149.36,
+          "volume": 1081.57049
+        },
+        {
+          "timestamp": 1776114000000,
+          "open": 73149.36,
+          "high": 73368.08,
+          "low": 73072.85,
+          "close": 73179.71,
+          "volume": 387.90227
+        },
+        {
+          "timestamp": 1776117600000,
+          "open": 73179.71,
+          "high": 74746.61,
+          "low": 73172.01,
+          "close": 74627.04,
+          "volume": 3298.60756
+        },
+        {
+          "timestamp": 1776121200000,
+          "open": 74627.04,
+          "high": 74900,
+          "low": 74405.64,
+          "close": 74417.99,
+          "volume": 1666.14205
+        },
+        {
+          "timestamp": 1776124800000,
+          "open": 74418,
+          "high": 74517.31,
+          "low": 74102.39,
+          "close": 74163.82,
+          "volume": 1276.45858
+        },
+        {
+          "timestamp": 1776128400000,
+          "open": 74163.82,
+          "high": 74431,
+          "low": 73954.86,
+          "close": 74386.02,
+          "volume": 1065.1631
+        },
+        {
+          "timestamp": 1776132000000,
+          "open": 74386.03,
+          "high": 74579.32,
+          "low": 74283.2,
+          "close": 74330.98,
+          "volume": 598.05117
+        },
+        {
+          "timestamp": 1776135600000,
+          "open": 74330.99,
+          "high": 74496.9,
+          "low": 74252.35,
+          "close": 74444.43,
+          "volume": 646.36946
+        },
+        {
+          "timestamp": 1776139200000,
+          "open": 74444.44,
+          "high": 74504.52,
+          "low": 74351.55,
+          "close": 74387.85,
+          "volume": 484.30563
+        },
+        {
+          "timestamp": 1776142800000,
+          "open": 74387.85,
+          "high": 74434.41,
+          "low": 74150.6,
+          "close": 74210.11,
+          "volume": 838.40961
+        },
+        {
+          "timestamp": 1776146400000,
+          "open": 74210.12,
+          "high": 74550,
+          "low": 74210.12,
+          "close": 74522.73,
+          "volume": 614.57152
+        },
+        {
+          "timestamp": 1776150000000,
+          "open": 74522.72,
+          "high": 74924.64,
+          "low": 74430.92,
+          "close": 74546,
+          "volume": 1456.55359
+        },
+        {
+          "timestamp": 1776153600000,
+          "open": 74545.99,
+          "high": 74910,
+          "low": 74460.64,
+          "close": 74750,
+          "volume": 938.29896
+        },
+        {
+          "timestamp": 1776157200000,
+          "open": 74750,
+          "high": 74830.93,
+          "low": 74435.12,
+          "close": 74500,
+          "volume": 565.8647
+        },
+        {
+          "timestamp": 1776160800000,
+          "open": 74500,
+          "high": 74617.92,
+          "low": 74333.46,
+          "close": 74350.01,
+          "volume": 540.18312
+        },
+        {
+          "timestamp": 1776164400000,
+          "open": 74350.01,
+          "high": 74450.63,
+          "low": 74307.35,
+          "close": 74376.52,
+          "volume": 653.35819
+        },
+        {
+          "timestamp": 1776168000000,
+          "open": 74376.52,
+          "high": 74485.06,
+          "low": 74277.19,
+          "close": 74452,
+          "volume": 513.51818
+        },
+        {
+          "timestamp": 1776171600000,
+          "open": 74452,
+          "high": 75532.94,
+          "low": 74407.74,
+          "close": 75525.94,
+          "volume": 3246.78739
+        },
+        {
+          "timestamp": 1776175200000,
+          "open": 75525.94,
+          "high": 76038,
+          "low": 75013.61,
+          "close": 75013.62,
+          "volume": 4357.56106
+        },
+        {
+          "timestamp": 1776178800000,
+          "open": 75013.61,
+          "high": 75441.99,
+          "low": 74564.34,
+          "close": 75317.07,
+          "volume": 1661.60412
+        },
+        {
+          "timestamp": 1776182400000,
+          "open": 75317.06,
+          "high": 75688,
+          "low": 74527.02,
+          "close": 74652.2,
+          "volume": 1265.45725
+        },
+        {
+          "timestamp": 1776186000000,
+          "open": 74652.2,
+          "high": 74948.78,
+          "low": 74244.63,
+          "close": 74748.9,
+          "volume": 985.979
+        },
+        {
+          "timestamp": 1776189600000,
+          "open": 74748.89,
+          "high": 74814.99,
+          "low": 73795.47,
+          "close": 74093.19,
+          "volume": 1613.97962
+        },
+        {
+          "timestamp": 1776193200000,
+          "open": 74093.18,
+          "high": 74398.43,
+          "low": 73882.79,
+          "close": 74223.18,
+          "volume": 1054.69346
+        },
+        {
+          "timestamp": 1776196800000,
+          "open": 74223.3,
+          "high": 74434.33,
+          "low": 74015.53,
+          "close": 74102.29,
+          "volume": 434.25271
+        },
+        {
+          "timestamp": 1776200400000,
+          "open": 74102.28,
+          "high": 74320.44,
+          "low": 73951.64,
+          "close": 74277.15,
+          "volume": 381.06364
+        },
+        {
+          "timestamp": 1776204000000,
+          "open": 74277.16,
+          "high": 74373.19,
+          "low": 73806.09,
+          "close": 74023.15,
+          "volume": 638.74603
+        },
+        {
+          "timestamp": 1776207600000,
+          "open": 74023.16,
+          "high": 74232.83,
+          "low": 74001.08,
+          "close": 74131.55,
+          "volume": 701.71447
+        },
+        {
+          "timestamp": 1776211200000,
+          "open": 74131.55,
+          "high": 74677.19,
+          "low": 74126.32,
+          "close": 74568.36,
+          "volume": 874.99865
+        },
+        {
+          "timestamp": 1776214800000,
+          "open": 74568.37,
+          "high": 74786.72,
+          "low": 74500,
+          "close": 74613.28,
+          "volume": 443.16738
+        },
+        {
+          "timestamp": 1776218400000,
+          "open": 74613.28,
+          "high": 74697.47,
+          "low": 74188,
+          "close": 74322,
+          "volume": 506.95652
+        },
+        {
+          "timestamp": 1776222000000,
+          "open": 74322.01,
+          "high": 74372.84,
+          "low": 74173.75,
+          "close": 74345.97,
+          "volume": 317.62112
+        },
+        {
+          "timestamp": 1776225600000,
+          "open": 74345.98,
+          "high": 74434.51,
+          "low": 74261.47,
+          "close": 74340.38,
+          "volume": 660.47305
+        },
+        {
+          "timestamp": 1776229200000,
+          "open": 74340.38,
+          "high": 74434,
+          "low": 73864.01,
+          "close": 74021.5,
+          "volume": 542.04465
+        },
+        {
+          "timestamp": 1776232800000,
+          "open": 74021.5,
+          "high": 74048.95,
+          "low": 73855.49,
+          "close": 73891.62,
+          "volume": 419.09008
+        },
+        {
+          "timestamp": 1776236400000,
+          "open": 73891.62,
+          "high": 74016.67,
+          "low": 73514,
+          "close": 73730.43,
+          "volume": 1451.80452
+        },
+        {
+          "timestamp": 1776240000000,
+          "open": 73730.43,
+          "high": 74134.38,
+          "low": 73675.96,
+          "close": 74122.99,
+          "volume": 267.04622
+        }
+      ],
+      "realizedVol": {
+        "24h": 0.44821336763771125,
+        "30d": 0.41462789608864786,
+        "1h": 0.25174571641733023,
+        "7d": 0.42198164234195934,
+        "15m": 0.2619237561521189
+      },
+      "realizedVolWarnings": []
+    },
+    "timing": {
+      "nowTs": 1776242074338
+    }
+  },
+  "result": [
+    {
+      "question": "Will the price of Bitcoin be between $78,000 and $80,000 on April 15?",
+      "questionType": "range",
+      "strike": 78000,
+      "strike2": 80000,
+      "hoursToExpiry": 7.42,
+      "outcomes": [
+        {
+          "label": "Yes",
+          "price": 0.0015,
+          "bestBid": 0.001,
+          "bestAsk": 0.002
+        },
+        {
+          "label": "No",
+          "price": 0.9985,
+          "bestBid": 0.998,
+          "bestAsk": 0.999
+        }
+      ],
+      "probs": [
+        0.001,
+        0.999
+      ],
+      "side": "hold",
+      "sideIndex": 1,
+      "sideLabel": "No",
+      "fairPrice": 0.999,
+      "marketPrice": 0.999,
+      "edge": 0,
+      "threshold": 0.05
+    },
+    {
+      "question": "Will the price of Bitcoin be less than $62,000 on April 15?",
+      "questionType": "below",
+      "strike": 62000,
+      "strike2": null,
+      "hoursToExpiry": 7.42,
+      "outcomes": [
+        {
+          "label": "Yes",
+          "price": 0.0005,
+          "bestBid": null,
+          "bestAsk": 0.001
+        },
+        {
+          "label": "No",
+          "price": 0.9995,
+          "bestBid": 0.999,
+          "bestAsk": null
+        }
+      ],
+      "probs": [
+        0.0273,
+        0.9727
+      ],
+      "side": "hold",
+      "sideIndex": 0,
+      "sideLabel": "Yes",
+      "fairPrice": 0.027310629835359982,
+      "marketPrice": 0.001,
+      "edge": 0.02631062983535998,
+      "threshold": 0.05
+    },
+    {
+      "question": "Will the price of Bitcoin be between $62,000 and $64,000 on April 15?",
+      "questionType": "range",
+      "strike": 62000,
+      "strike2": 64000,
+      "hoursToExpiry": 7.42,
+      "outcomes": [
+        {
+          "label": "Yes",
+          "price": 0.0005,
+          "bestBid": null,
+          "bestAsk": 0.001
+        },
+        {
+          "label": "No",
+          "price": 0.9995,
+          "bestBid": 0.999,
+          "bestAsk": null
+        }
+      ],
+      "probs": [
+        0.001,
+        0.999
+      ],
+      "side": "hold",
+      "sideIndex": 0,
+      "sideLabel": "Yes",
+      "fairPrice": 0.001,
+      "marketPrice": 0.001,
+      "edge": 0,
+      "threshold": 0.05
+    },
+    {
+      "question": "Will the price of Bitcoin be between $64,000 and $66,000 on April 15?",
+      "questionType": "range",
+      "strike": 64000,
+      "strike2": 66000,
+      "hoursToExpiry": 7.42,
+      "outcomes": [
+        {
+          "label": "Yes",
+          "price": 0.0005,
+          "bestBid": null,
+          "bestAsk": 0.001
+        },
+        {
+          "label": "No",
+          "price": 0.9995,
+          "bestBid": 0.999,
+          "bestAsk": null
+        }
+      ],
+      "probs": [
+        0.001,
+        0.999
+      ],
+      "side": "hold",
+      "sideIndex": 0,
+      "sideLabel": "Yes",
+      "fairPrice": 0.001,
+      "marketPrice": 0.001,
+      "edge": 0,
+      "threshold": 0.05
+    },
+    {
+      "question": "Will the price of Bitcoin be between $66,000 and $68,000 on April 15?",
+      "questionType": "range",
+      "strike": 66000,
+      "strike2": 68000,
+      "hoursToExpiry": 7.42,
+      "outcomes": [
+        {
+          "label": "Yes",
+          "price": 0.0005,
+          "bestBid": null,
+          "bestAsk": 0.001
+        },
+        {
+          "label": "No",
+          "price": 0.9995,
+          "bestBid": 0.999,
+          "bestAsk": null
+        }
+      ],
+      "probs": [
+        0.001,
+        0.999
+      ],
+      "side": "hold",
+      "sideIndex": 0,
+      "sideLabel": "Yes",
+      "fairPrice": 0.001,
+      "marketPrice": 0.001,
+      "edge": 0,
+      "threshold": 0.05
+    },
+    {
+      "question": "Will the price of Bitcoin be between $68,000 and $70,000 on April 15?",
+      "questionType": "range",
+      "strike": 68000,
+      "strike2": 70000,
+      "hoursToExpiry": 7.42,
+      "outcomes": [
+        {
+          "label": "Yes",
+          "price": 0.003,
+          "bestBid": 0.001,
+          "bestAsk": 0.005
+        },
+        {
+          "label": "No",
+          "price": 0.997,
+          "bestBid": 0.995,
+          "bestAsk": 0.999
+        }
+      ],
+      "probs": [
+        0.001,
+        0.999
+      ],
+      "side": "hold",
+      "sideIndex": 1,
+      "sideLabel": "No",
+      "fairPrice": 0.999,
+      "marketPrice": 0.999,
+      "edge": 0,
+      "threshold": 0.05
+    },
+    {
+      "question": "Will the price of Bitcoin be between $70,000 and $72,000 on April 15?",
+      "questionType": "range",
+      "strike": 70000,
+      "strike2": 72000,
+      "hoursToExpiry": 7.42,
+      "outcomes": [
+        {
+          "label": "Yes",
+          "price": 0.032,
+          "bestBid": 0.029,
+          "bestAsk": 0.03
+        },
+        {
+          "label": "No",
+          "price": 0.968,
+          "bestBid": 0.97,
+          "bestAsk": 0.971
+        }
+      ],
+      "probs": [
+        0.001,
+        0.999
+      ],
+      "side": "hold",
+      "sideIndex": 1,
+      "sideLabel": "No",
+      "fairPrice": 0.999,
+      "marketPrice": 0.971,
+      "edge": 0.028000000000000025,
+      "threshold": 0.05
+    },
+    {
+      "question": "Will the price of Bitcoin be between $72,000 and $74,000 on April 15?",
+      "questionType": "range",
+      "strike": 72000,
+      "strike2": 74000,
+      "hoursToExpiry": 7.42,
+      "outcomes": [
+        {
+          "label": "Yes",
+          "price": 0.48,
+          "bestBid": 0.43,
+          "bestAsk": 0.44
+        },
+        {
+          "label": "No",
+          "price": 0.52,
+          "bestBid": 0.56,
+          "bestAsk": 0.57
+        }
+      ],
+      "probs": [
+        0.3687,
+        0.6313
+      ],
+      "side": "No",
+      "sideIndex": 1,
+      "sideLabel": "No",
+      "fairPrice": 0.6313408651440497,
+      "marketPrice": 0.57,
+      "edge": 0.061340865144049794,
+      "threshold": 0.05
+    },
+    {
+      "question": "Will the price of Bitcoin be between $74,000 and $76,000 on April 15?",
+      "questionType": "range",
+      "strike": 74000,
+      "strike2": 76000,
+      "hoursToExpiry": 7.42,
+      "outcomes": [
+        {
+          "label": "Yes",
+          "price": 0.475,
+          "bestBid": 0.53,
+          "bestAsk": 0.54
+        },
+        {
+          "label": "No",
+          "price": 0.525,
+          "bestBid": 0.46,
+          "bestAsk": 0.47
+        }
+      ],
+      "probs": [
+        0.6178,
+        0.3822
+      ],
+      "side": "Yes",
+      "sideIndex": 0,
+      "sideLabel": "Yes",
+      "fairPrice": 0.6178490889142586,
+      "marketPrice": 0.54,
+      "edge": 0.07784908891425857,
+      "threshold": 0.05
+    },
+    {
+      "question": "Will the price of Bitcoin be between $76,000 and $78,000 on April 15?",
+      "questionType": "range",
+      "strike": 76000,
+      "strike2": 78000,
+      "hoursToExpiry": 7.42,
+      "outcomes": [
+        {
+          "label": "Yes",
+          "price": 0.0255,
+          "bestBid": 0.029,
+          "bestAsk": 0.03
+        },
+        {
+          "label": "No",
+          "price": 0.9745,
+          "bestBid": 0.97,
+          "bestAsk": 0.971
+        }
+      ],
+      "probs": [
+        0.001,
+        0.999
+      ],
+      "side": "hold",
+      "sideIndex": 1,
+      "sideLabel": "No",
+      "fairPrice": 0.999,
+      "marketPrice": 0.971,
+      "edge": 0.028000000000000025,
+      "threshold": 0.05
+    },
+    {
+      "question": "Will the price of Bitcoin be greater than $80,000 on April 15?",
+      "questionType": "above",
+      "strike": 80000,
+      "strike2": null,
+      "hoursToExpiry": 7.42,
+      "outcomes": [
+        {
+          "label": "Yes",
+          "price": 0.0005,
+          "bestBid": null,
+          "bestAsk": 0.001
+        },
+        {
+          "label": "No",
+          "price": 0.9995,
+          "bestBid": 0.999,
+          "bestAsk": null
+        }
+      ],
+      "probs": [
+        0.001,
+        0.999
+      ],
+      "side": "hold",
+      "sideIndex": 0,
+      "sideLabel": "Yes",
+      "fairPrice": 0.001,
+      "marketPrice": 0.001,
+      "edge": 0,
+      "threshold": 0.05
+    }
+  ],
+  "durationMs": 1
+}

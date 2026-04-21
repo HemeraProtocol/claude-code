@@ -30,9 +30,48 @@ const CLOB_BOOK = {
 }
 
 const BINANCE_KLINE = [
-  [1713100800000, '84000', '84500', '83500', '84200', '1000', 0, '0', 0, '0', '0', '0'],
-  [1713104400000, '84200', '84800', '84000', '84600', '1200', 0, '0', 0, '0', '0', '0'],
-  [1713108000000, '84600', '85000', '84200', '84900', '1100', 0, '0', 0, '0', '0', '0'],
+  [
+    1713100800000,
+    '84000',
+    '84500',
+    '83500',
+    '84200',
+    '1000',
+    0,
+    '0',
+    0,
+    '0',
+    '0',
+    '0',
+  ],
+  [
+    1713104400000,
+    '84200',
+    '84800',
+    '84000',
+    '84600',
+    '1200',
+    0,
+    '0',
+    0,
+    '0',
+    '0',
+    '0',
+  ],
+  [
+    1713108000000,
+    '84600',
+    '85000',
+    '84200',
+    '84900',
+    '1100',
+    0,
+    '0',
+    0,
+    '0',
+    '0',
+    '0',
+  ],
 ]
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -40,7 +79,12 @@ const BINANCE_KLINE = [
 function mockFetchResponses() {
   const originalFetch = globalThis.fetch
   globalThis.fetch = mock(async (input: string | URL | Request) => {
-    const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+    const url =
+      typeof input === 'string'
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : input.url
     if (url.includes('gamma-api.polymarket.com')) {
       return new Response(JSON.stringify([GAMMA_EVENT]), { status: 200 })
     }
@@ -51,7 +95,7 @@ function mockFetchResponses() {
       return new Response(JSON.stringify(BINANCE_KLINE), { status: 200 })
     }
     return new Response('Not found', { status: 404 })
-  }) as typeof fetch
+  }) as unknown as typeof fetch
   return originalFetch
 }
 
@@ -72,7 +116,10 @@ describe('LiveAdapter', () => {
     // Dynamic import after mock is installed
     const { LiveAdapter } = await import('../adapters/live')
     const adapter = new LiveAdapter()
-    const ctx: Ctx = await adapter.buildCtx('test-event', { underlying: 'BTC', klineLimit: 3 })
+    const ctx: Ctx = await adapter.buildCtx('test-event', {
+      underlying: 'BTC',
+      klineLimit: 3,
+    })
 
     // event
     expect(ctx.event).toEqual({ slug: 'test-event', title: 'Test Event' })
@@ -133,7 +180,12 @@ describe('LiveAdapter', () => {
   test('throws on Gamma 404', async () => {
     // Override fetch to return 404 for Gamma
     globalThis.fetch = mock(async (input: string | URL | Request) => {
-      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+      const url =
+        typeof input === 'string'
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url
       if (url.includes('gamma-api.polymarket.com')) {
         return new Response('Not found', { status: 404 })
       }
@@ -141,16 +193,144 @@ describe('LiveAdapter', () => {
         return new Response(JSON.stringify(BINANCE_KLINE), { status: 200 })
       }
       return new Response('{}', { status: 200 })
-    }) as typeof fetch
+    }) as unknown as typeof fetch
 
     const { LiveAdapter } = await import('../adapters/live')
     const adapter = new LiveAdapter()
-    expect(adapter.buildCtx('nonexistent-slug')).rejects.toThrow('Gamma API error: 404')
+    expect(adapter.buildCtx('nonexistent-slug')).rejects.toThrow(
+      'Gamma API error: 404',
+    )
+  })
+
+  test('fetchXtrackerPosts sorts by createdAt descending across accounts', async () => {
+    // Override fetch to return posts from two accounts with interleaved timestamps
+    globalThis.fetch = mock(async (input: string | URL | Request) => {
+      const url =
+        typeof input === 'string'
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url
+      if (url.includes('gamma-api.polymarket.com')) {
+        return new Response(JSON.stringify([GAMMA_EVENT]), { status: 200 })
+      }
+      if (url.includes('clob.polymarket.com')) {
+        return new Response(JSON.stringify(CLOB_BOOK), { status: 200 })
+      }
+      if (url.includes('xtracker.polymarket.com') && url.includes('alice')) {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            data: [
+              { content: 'alice-old', createdAt: '2026-04-10T01:00:00Z' },
+              { content: 'alice-oldest', createdAt: '2026-04-09T01:00:00Z' },
+            ],
+          }),
+          { status: 200 },
+        )
+      }
+      if (url.includes('xtracker.polymarket.com') && url.includes('bob')) {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            data: [
+              { content: 'bob-newest', createdAt: '2026-04-11T01:00:00Z' },
+              { content: 'bob-mid', createdAt: '2026-04-10T12:00:00Z' },
+            ],
+          }),
+          { status: 200 },
+        )
+      }
+      return new Response('Not found', { status: 404 })
+    }) as unknown as typeof fetch
+
+    const { LiveAdapter } = await import('../adapters/live')
+    const adapter = new LiveAdapter()
+    const ctx = await adapter.buildCtx('test-event', {
+      newsAccounts: ['alice', 'bob'],
+    })
+
+    expect(ctx.news).toBeDefined()
+    expect(ctx.news!.totalCount).toBe(4)
+    // Should be sorted newest-first regardless of account order
+    expect(ctx.news!.tweets[0]!.text).toBe('bob-newest')
+    expect(ctx.news!.tweets[1]!.text).toBe('bob-mid')
+    expect(ctx.news!.tweets[2]!.text).toBe('alice-old')
+    expect(ctx.news!.tweets[3]!.text).toBe('alice-oldest')
+  })
+
+  test('warnings are populated when CLOB returns empty book', async () => {
+    // Override fetch: CLOB returns empty book
+    globalThis.fetch = mock(async (input: string | URL | Request) => {
+      const url =
+        typeof input === 'string'
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url
+      if (url.includes('gamma-api.polymarket.com')) {
+        return new Response(JSON.stringify([GAMMA_EVENT]), { status: 200 })
+      }
+      if (url.includes('clob.polymarket.com')) {
+        return new Response(JSON.stringify({ bids: [], asks: [] }), {
+          status: 200,
+        })
+      }
+      if (url.includes('api.binance.com')) {
+        return new Response(JSON.stringify(BINANCE_KLINE), { status: 200 })
+      }
+      return new Response('Not found', { status: 404 })
+    }) as unknown as typeof fetch
+
+    const { LiveAdapter } = await import('../adapters/live')
+    const adapter = new LiveAdapter()
+    const ctx = await adapter.buildCtx('test-event')
+
+    expect(ctx.warnings).toBeDefined()
+    expect(ctx.warnings!.some(w => w.includes('empty book'))).toBe(true)
+  })
+
+  test('warnings distinguish CLOB fetch failure from empty book', async () => {
+    // CLOB returns 500 (fetch failure)
+    globalThis.fetch = mock(async (input: string | URL | Request) => {
+      const url =
+        typeof input === 'string'
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url
+      if (url.includes('gamma-api.polymarket.com')) {
+        return new Response(JSON.stringify([GAMMA_EVENT]), { status: 200 })
+      }
+      if (url.includes('clob.polymarket.com')) {
+        return new Response('Internal Server Error', { status: 500 })
+      }
+      if (url.includes('api.binance.com')) {
+        return new Response(JSON.stringify(BINANCE_KLINE), { status: 200 })
+      }
+      return new Response('Not found', { status: 404 })
+    }) as unknown as typeof fetch
+
+    const { LiveAdapter } = await import('../adapters/live')
+    const adapter = new LiveAdapter()
+    const ctx = await adapter.buildCtx('test-event')
+
+    expect(ctx.warnings).toBeDefined()
+    expect(ctx.warnings!.some(w => w.includes('fetch failed (HTTP 500)'))).toBe(
+      true,
+    )
+    // Should NOT say "empty book" for HTTP failures
+    expect(ctx.warnings!.some(w => w.includes('empty book'))).toBe(false)
   })
 
   test('throws on Gamma empty result', async () => {
     globalThis.fetch = mock(async (input: string | URL | Request) => {
-      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+      const url =
+        typeof input === 'string'
+          ? input
+          : input instanceof URL
+            ? input.toString()
+            : input.url
       if (url.includes('gamma-api.polymarket.com')) {
         return new Response(JSON.stringify([]), { status: 200 })
       }
@@ -158,10 +338,12 @@ describe('LiveAdapter', () => {
         return new Response(JSON.stringify(BINANCE_KLINE), { status: 200 })
       }
       return new Response('{}', { status: 200 })
-    }) as typeof fetch
+    }) as unknown as typeof fetch
 
     const { LiveAdapter } = await import('../adapters/live')
     const adapter = new LiveAdapter()
-    expect(adapter.buildCtx('nonexistent-slug')).rejects.toThrow('No event found for slug')
+    expect(adapter.buildCtx('nonexistent-slug')).rejects.toThrow(
+      'No event found for slug',
+    )
   })
 })

@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 2,
+  "timestamp": "2026-04-20T07:42:49.141Z",
+  "status": "success",
+  "ctxPath": "/tmp/polymarket-ctx-elon-musk-of-tweets-april-18-april-20-85278-955739e0.json",
+  "ctxHash": "2339163514957606028",
+  "helpersModulePath": "/Users/linxuan/Desktop/claude_code_research/claude-code/.claude/skills/polymarket-strategy/helpers.ts",
+  "helpersHash": "14783883925871464737",
+  "gitCommit": "b67c8f2d96844cfe3d1bc8577af9c8ea9fcbb17b",
+  "code": "\n// Politics/Tweet event — Twitter API rate-limited, no ctx.news\n// Reasoning from market prices + time-to-expiry only\n\nconst THRESHOLD = 0.04;\n\n// Market analysis:\n// - Window: April 18 16:00 UTC to April 20 16:00 UTC (48 hours total)\n// - nowTs: ctx.timing.nowTs ≈ 2026-04-20T07:41 UTC → ~39.7h elapsed, ~8.3h remaining (84% complete)\n// - Market strongly prices 40-64 at 0.92 YES\n// - 65-89 bucket at 0.0765 YES (~7.65% chance Elon posted more)\n// - Implied distribution is very concentrated in 40-64 band\n//\n// Without Twitter data, my estimates anchor to market consensus with small adjustments:\n// The 8.3h remaining (out of 48h) = ~17% of window left\n// If count is mid-range of 40-64 (say 52) at 84% complete, rate = 52/39.7h ≈ 1.31 tweets/hr\n// Projected additional: 1.31 * 8.3 ≈ 10.9 tweets → final projected: ~63 tweets (still in 40-64)\n// But variance exists — slight upside risk to 65-89 range\n\nconst estimates = {\n  \"Will Elon Musk post <40 tweets from April 18 to April 20, 2026?\":           0.001,\n  \"Will Elon Musk post 40-64 tweets from April 18 to April 20, 2026?\":         0.905,\n  \"Will Elon Musk post 65-89 tweets from April 18 to April 20, 2026?\":         0.085,\n  \"Will Elon Musk post 90-114 tweets from April 18 to April 20, 2026?\":        0.007,\n  \"Will Elon Musk post 115-139 tweets from April 18 to April 20, 2026?\":       0.0015,\n  \"Will Elon Musk post 140-164 tweets from April 18 to April 20, 2026?\":       0.0005,\n  \"Will Elon Musk post 165-189 tweets from April 18 to April 20, 2026?\":       0.0002,\n  \"Will Elon Musk post 190-214 tweets from April 18 to April 20, 2026?\":       0.0001,\n  \"Will Elon Musk post 215-239 tweets from April 18 to April 20, 2026?\":       0.0001,\n  \"Will Elon Musk post 240+ tweets from April 18 to April 20, 2026?\":          0.0001,\n};\n\nreturn ctx.markets.map((market) => {\n  try {\n    if (market.closed || market.hoursToExpiry < 0) {\n      return { question: market.question, decision: \"hold\", reason: \"closed or expired\" };\n    }\n    const mCtx = { market, timing: ctx.timing };\n    const pYes = estimates[market.question] ?? 0.5;\n    const probs = ctx.helpers.binaryProbsFromYesProb(mCtx, pYes);\n    const edges = ctx.helpers.edgeFromProbs(probs, mCtx);\n    const best = edges[0].edge >= edges[1].edge ? edges[0] : edges[1];\n    const label0 = market.outcomes[0]?.label;\n    const label1 = market.outcomes[1]?.label;\n    if (best.edge < THRESHOLD) {\n      return {\n        question: market.question,\n        decision: \"hold\",\n        edge: best.edge,\n        pYes,\n        marketYesPrice: market.outcomes.find(o => o.label === \"Yes\")?.price,\n      };\n    }\n    return {\n      question: market.question,\n      decision: \"buy\",\n      side: best.label,\n      fairPrice: best.fairPrice,\n      marketPrice: best.marketPrice,\n      edge: best.edge,\n      pYes,\n    };\n  } catch (err) {\n    return { question: market.question, decision: \"hold\", reason: String(err) };\n  }\n});\n",
+  "durationMs": 1,
+  "result": [
+    {
+      "question": "Will Elon Musk post <40 tweets from April 18 to April 20, 2026?",
+      "decision": "hold",
+      "edge": 0,
+      "pYes": 0.001,
+      "marketYesPrice": 0.0005
+    },
+    {
+      "question": "Will Elon Musk post 40-64 tweets from April 18 to April 20, 2026?",
+      "decision": "hold",
+      "edge": 0.0050000000000000044,
+      "pYes": 0.905,
+      "marketYesPrice": 0.915
+    },
+    {
+      "question": "Will Elon Musk post 65-89 tweets from April 18 to April 20, 2026?",
+      "decision": "hold",
+      "edge": 0.006000000000000005,
+      "pYes": 0.085,
+      "marketYesPrice": 0.081
+    },
+    {
+      "question": "Will Elon Musk post 90-114 tweets from April 18 to April 20, 2026?",
+      "decision": "hold",
+      "edge": -0.0010000000000000009,
+      "pYes": 0.007,
+      "marketYesPrice": 0.007
+    },
+    {
+      "question": "Will Elon Musk post 115-139 tweets from April 18 to April 20, 2026?",
+      "decision": "hold",
+      "edge": -0.0004999999999999449,
+      "pYes": 0.0015,
+      "marketYesPrice": 0.0015
+    },
+    {
+      "question": "Will Elon Musk post 140-164 tweets from April 18 to April 20, 2026?",
+      "decision": "hold",
+      "edge": 0,
+      "pYes": 0.0005,
+      "marketYesPrice": 0.0005
+    },
+    {
+      "question": "Will Elon Musk post 165-189 tweets from April 18 to April 20, 2026?",
+      "decision": "hold",
+      "edge": 0.00029999999999996696,
+      "pYes": 0.0002,
+      "marketYesPrice": 0.0005
+    },
+    {
+      "question": "Will Elon Musk post 190-214 tweets from April 18 to April 20, 2026?",
+      "decision": "hold",
+      "edge": 0.00039999999999995595,
+      "pYes": 0.0001,
+      "marketYesPrice": 0.0005
+    },
+    {
+      "question": "Will Elon Musk post 215-239 tweets from April 18 to April 20, 2026?",
+      "decision": "hold",
+      "edge": 0.00039999999999995595,
+      "pYes": 0.0001,
+      "marketYesPrice": 0.0005
+    },
+    {
+      "question": "Will Elon Musk post 240+ tweets from April 18 to April 20, 2026?",
+      "decision": "hold",
+      "edge": 0.00039999999999995595,
+      "pYes": 0.0001,
+      "marketYesPrice": 0.0005
+    }
+  ]
+}

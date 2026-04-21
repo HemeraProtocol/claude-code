@@ -129,6 +129,7 @@ export interface Ctx {
   }
   news?: NewsData
   timing: { nowTs: number }
+  warnings?: string[]
 }
 
 // ─── adapter ────────────────────────────────────────────────────────────────
