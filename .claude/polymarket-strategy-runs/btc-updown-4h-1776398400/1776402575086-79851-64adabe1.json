@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 2,
+  "timestamp": "2026-04-17T05:10:52.495Z",
+  "status": "success",
+  "ctxPath": "/tmp/polymarket-ctx-btc-updown-4h-1776398400-79851-64adabe1.json",
+  "ctxHash": "1818554054631162322",
+  "helpersModulePath": "/Users/linxuan/Desktop/claude_code_research/claude-code/.claude/skills/polymarket-strategy/helpers.ts",
+  "helpersHash": "18148763106966049132",
+  "gitCommit": "86f1d879f39fa32b3f30a2808f54d27c757bf170",
+  "code": "\n// =====================\n// Thresholds (no magic numbers)\n// =====================\nconst BUY_UP_PROB_THRESHOLD    = 0.56;\nconst BUY_DOWN_PROB_THRESHOLD  = 0.44;\nconst BUY_UP_EDGE_THRESHOLD    = 0.04;\nconst BUY_DOWN_EDGE_THRESHOLD  = -0.04;\n\n// Indicator weights (must sum to 1)\nconst W_RETURN_15M = 0.15;\nconst W_RETURN_1H  = 0.25;\nconst W_RETURN_4H  = 0.25;\nconst W_RSI        = 0.15;\nconst W_EMA_CROSS  = 0.10;\nconst W_MACD_HIST  = 0.10;\n\n// Logistic scale: direction_score ∈ [-1,1] → sigmoid(score * SCORE_SCALE)\nconst SCORE_SCALE = 1.0;\n\nconst sigmoid = (x) => 1 / (1 + Math.exp(-x));\nconst clamp   = (v, lo, hi) => Math.max(lo, Math.min(hi, v));\n\n// =====================\n// Event-scope features\n// =====================\nconst klines  = ctx.underlying.klines;\nconst closes  = klines.map(k => k.close);\nconst highs   = klines.map(k => k.high);\nconst lows    = klines.map(k => k.low);\nconst n       = closes.length;\n\n// ATR(14) Wilder smoothing\nlet atr = 0;\nif (n >= 15) {\n  const trs = [];\n  for (let i = 1; i < n; i++) {\n    const tr = Math.max(highs[i]-lows[i], Math.abs(highs[i]-closes[i-1]), Math.abs(lows[i]-closes[i-1]));\n    trs.push(tr);\n  }\n  let atrVal = trs.slice(0, 14).reduce((a, b) => a + b, 0) / 14;\n  for (let i = 14; i < trs.length; i++) atrVal = (atrVal * 13 + trs[i]) / 14;\n  atr = atrVal;\n}\nconst currentPrice = closes[n - 1];\nconst atrRatio     = currentPrice > 0 ? atr / currentPrice : 0.02;\nconst atrScale     = atrRatio > 0 ? atrRatio : 0.02;\n\n// Price returns\nconst lastBar = klines[n - 1];\nconst ret15m  = (lastBar.close - lastBar.open) / lastBar.open;\nconst ret1h   = n >= 2 ? (closes[n-1] - closes[n-2]) / closes[n-2] : 0;\nconst ret4h   = n >= 5 ? (closes[n-1] - closes[n-5]) / closes[n-5] : 0;\n\n// RSI(14)\nconst rsiVal = ctx.helpers.rsi(closes, 14);\n\n// EMA(12) and EMA(26)\nconst ema12Arr = ctx.helpers.emaArray(closes, 12);\nconst ema26Arr = ctx.helpers.emaArray(closes, 26);\nconst ema12    = ema12Arr.at(-1);\nconst ema26    = ema26Arr.at(-1);\nconst emaCross = ema12 - ema26;\n\n// MACD histogram = MACD_line - Signal(9)\nconst macdLine  = ema12Arr.map((v, i) => v - ema26Arr[i]);\nconst signalArr = ctx.helpers.emaArray(macdLine, 9);\nconst macdHist  = macdLine.at(-1) - signalArr.at(-1);\n\n// Normalize signals to [-1, 1]\nconst sig15m  = clamp(ret15m / atrScale,                      -1, 1);\nconst sig1h   = clamp(ret1h  / atrScale,                      -1, 1);\nconst sig4h   = clamp(ret4h  / (atrScale * 2),                -1, 1);\nconst sigRsi  = clamp((rsiVal - 50) / 20,                     -1, 1);\nconst sigEma  = clamp(emaCross / currentPrice / atrScale,     -1, 1);\nconst sigMacd = clamp(macdHist / currentPrice / (atrScale * 0.5), -1, 1);\n\n// direction_score ∈ [-1, 1]\nconst direction_score = clamp(\n  sig15m * W_RETURN_15M +\n  sig1h  * W_RETURN_1H  +\n  sig4h  * W_RETURN_4H  +\n  sigRsi * W_RSI        +\n  sigEma * W_EMA_CROSS  +\n  sigMacd * W_MACD_HIST,\n  -1, 1\n);\n\n// predicted_prob_up via logistic mapping\nconst predicted_prob_up = sigmoid(direction_score * SCORE_SCALE);\n\n// =====================\n// Per-market output\n// =====================\nreturn ctx.markets.map(market => {\n  try {\n    if (market.closed || market.hoursToExpiry < 0) {\n      return { question: market.question, decision: \"hold\", action: \"HOLD\", reason: \"closed or expired\" };\n    }\n\n    const upOutcome = market.outcomes.find(o => o.label.toLowerCase() === 'up');\n    if (!upOutcome) {\n      return { question: market.question, decision: \"hold\", action: \"HOLD\", reason: \"no Up outcome found\" };\n    }\n\n    const market_prob_up = upOutcome.price;\n    const edge = predicted_prob_up - market_prob_up;\n\n    let action;\n    let holdReason = null;\n    if (predicted_prob_up >= BUY_UP_PROB_THRESHOLD && edge >= BUY_UP_EDGE_THRESHOLD) {\n      action = \"BUY_UP\";\n    } else if (predicted_prob_up <= BUY_DOWN_PROB_THRESHOLD && edge <= BUY_DOWN_EDGE_THRESHOLD) {\n      action = \"BUY_DOWN\";\n    } else {\n      action = \"HOLD\";\n      const directionClear = predicted_prob_up >= BUY_UP_PROB_THRESHOLD || predicted_prob_up <= BUY_DOWN_PROB_THRESHOLD;\n      holdReason = directionClear ? \"edge 不足\" : \"方向不够明确\";\n    }\n\n    return {\n      question:        market.question,\n      decision:        action === \"HOLD\" ? \"hold\" : \"buy\",\n      action,\n      holdReason,\n      raw_indicators: {\n        ret15m,\n        ret1h,\n        ret4h,\n        rsi14:     rsiVal,\n        ema12,\n        ema26,\n        ema_cross: emaCross,\n        macd_hist: macdHist,\n        atr_ratio: atrRatio,\n      },\n      normalized_signals: { sig15m, sig1h, sig4h, sigRsi, sigEma, sigMacd },\n      direction_score,\n      predicted_prob_up,\n      market_prob_up,\n      edge,\n      spotPrice:     currentPrice,\n      expiryDate:    market.expiryDate,\n      hoursToExpiry: market.hoursToExpiry,\n    };\n  } catch (err) {\n    return { question: market.question, decision: \"hold\", action: \"HOLD\", reason: String(err) };\n  }\n});\n",
+  "durationMs": 1,
+  "result": [
+    {
+      "question": "Bitcoin Up or Down - April 17, 12:00AM-4:00AM ET",
+      "decision": "hold",
+      "action": "HOLD",
+      "holdReason": "方向不够明确",
+      "raw_indicators": {
+        "ret15m": -0.002264832890523888,
+        "ret1h": -0.002264832890523888,
+        "ret4h": -0.0017123745819397993,
+        "rsi14": 48.633041250743524,
+        "ema12": 74760.76178954056,
+        "ema26": 74706.89792976453,
+        "ema_cross": 53.86385977602913,
+        "macd_hist": -30.297144849966216,
+        "atr_ratio": 0.006037814274183011
+      },
+      "normalized_signals": {
+        "sig15m": -0.3751080751536279,
+        "sig1h": -0.3751080751536279,
+        "sig4h": -0.1418041781495096,
+        "sigRsi": -0.06834793746282379,
+        "sigEma": 0.11955034571545649,
+        "sigMacd": -0.1344884735726505
+      },
+      "direction_score": -0.19724027800397154,
+      "predicted_prob_up": 0.45084917313907863,
+      "market_prob_up": 0.585,
+      "edge": -0.13415082686092134,
+      "spotPrice": 74622,
+      "expiryDate": "2026-04-17T08:00:00Z",
+      "hoursToExpiry": 2.8402541666666665
+    }
+  ]
+}

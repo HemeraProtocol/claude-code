@@ -1,0 +1,399 @@
+{
+  "schemaVersion": 2,
+  "timestamp": "2026-04-17T09:00:55.209Z",
+  "status": "success",
+  "ctxPath": "/tmp/polymarket-ctx-bitcoin-above-on-april-17-36169-f94e08df.json",
+  "ctxHash": "14869111397423896732",
+  "helpersModulePath": "/Users/linxuan/Desktop/claude_code_research/claude-code/.claude/skills/polymarket-strategy/helpers.ts",
+  "helpersHash": "18148763106966049132",
+  "gitCommit": "b67c8f2d96844cfe3d1bc8577af9c8ea9fcbb17b",
+  "code": "\n// =====================\n// Thresholds\n// =====================\nconst EDGE_THRESHOLD      = 0.04;\nconst MOMENTUM_WEIGHT     = 0.25;  // log-odds shift scale\nconst RSI_NEUTRAL         = 50;\nconst RSI_NORM_RANGE      = 20;\nconst ATR_FALLBACK        = 0.02;\n\nconst logit   = (p) => Math.log(p / (1 - p));\nconst sigmoid = (x) => 1 / (1 + Math.exp(-x));\nconst clamp   = (v, lo, hi) => Math.max(lo, Math.min(hi, v));\n\n// =====================\n// Event-scope features\n// =====================\nconst klines  = ctx.underlying.klines;\nconst closes  = klines.map(k => k.close);\nconst highs   = klines.map(k => k.high);\nconst lows    = klines.map(k => k.low);\nconst n       = closes.length;\n\n// ATR(14) Wilder\nlet atr = 0;\nif (n >= 15) {\n  const trs = [];\n  for (let i = 1; i < n; i++) {\n    const tr = Math.max(highs[i]-lows[i], Math.abs(highs[i]-closes[i-1]), Math.abs(lows[i]-closes[i-1]));\n    trs.push(tr);\n  }\n  let atrVal = trs.slice(0, 14).reduce((a, b) => a + b, 0) / 14;\n  for (let i = 14; i < trs.length; i++) atrVal = (atrVal * 13 + trs[i]) / 14;\n  atr = atrVal;\n}\nconst spot     = closes[n - 1];\nconst atrRatio = spot > 0 ? atr / spot : ATR_FALLBACK;\nconst atrScale = atrRatio > 0 ? atrRatio : ATR_FALLBACK;\n\n// Returns\nconst lastBar = klines[n - 1];\nconst ret15m  = (lastBar.close - lastBar.open) / lastBar.open;\nconst ret1h   = n >= 2  ? (closes[n-1] - closes[n-2])  / closes[n-2]  : 0;\nconst ret4h   = n >= 5  ? (closes[n-1] - closes[n-5])  / closes[n-5]  : 0;\nconst ret24h  = n >= 25 ? (closes[n-1] - closes[n-25]) / closes[n-25] : 0;\n\n// RSI(14)\nconst rsiVal    = ctx.helpers.rsi(closes, 14);\nconst rsiSignal = clamp((rsiVal - RSI_NEUTRAL) / RSI_NORM_RANGE, -1, 1);\n\n// EMA(12) / EMA(26)\nconst ema12Arr  = ctx.helpers.emaArray(closes, 12);\nconst ema26Arr  = ctx.helpers.emaArray(closes, 26);\nconst ema12     = ema12Arr.at(-1);\nconst ema26     = ema26Arr.at(-1);\nconst emaCross  = ema12 - ema26;\nconst emaSignal = clamp(emaCross / spot / atrScale, -1, 1);\n\n// MACD histogram\nconst macdLine   = ema12Arr.map((v, i) => v - ema26Arr[i]);\nconst signalLine = ctx.helpers.emaArray(macdLine, 9);\nconst macdHist   = macdLine.at(-1) - signalLine.at(-1);\nconst macdSignal = clamp(macdHist / spot / (atrScale * 0.5), -1, 1);\n\n// Short momentum (normalized returns)\nconst sig15m = clamp(ret15m / atrScale, -1, 1);\nconst sig1h  = clamp(ret1h  / atrScale, -1, 1);\nconst sig4h  = clamp(ret4h  / (atrScale * 2), -1, 1);\n\n// Composite signal → log-odds shift\nconst compositeSignal = (\n  sig15m    * 0.10 +\n  sig1h     * 0.20 +\n  sig4h     * 0.20 +\n  rsiSignal * 0.20 +\n  emaSignal * 0.15 +\n  macdSignal* 0.15\n);\nconst logOddsShift = compositeSignal * MOMENTUM_WEIGHT;\n\n// =====================\n// Per-market\n// =====================\nconst et = ctx.helpers.eventPrimaryQuestionType(ctx);\n\nreturn ctx.markets.map(market => {\n  try {\n    if (market.closed || market.hoursToExpiry < 0) {\n      return { question: market.question, decision: \"hold\", reason: \"closed or expired\" };\n    }\n\n    const mCtx = { market, underlying: ctx.underlying, timing: ctx.timing };\n\n    // Single-type dispatch (above/below only for this event)\n    let pYesBase;\n    if (market.questionType === \"above\") {\n      pYesBase = ctx.helpers.bsAbove(mCtx);\n    } else if (market.questionType === \"below\") {\n      pYesBase = 1 - ctx.helpers.bsAbove(mCtx);\n    } else {\n      return { question: market.question, decision: \"hold\", reason: `unsupported type: ${market.questionType}` };\n    }\n\n    const pYes  = sigmoid(logit(clamp(pYesBase, 1e-6, 1 - 1e-6)) + logOddsShift);\n    const probs = ctx.helpers.binaryProbsFromYesProb(mCtx, pYes);\n    const edges = ctx.helpers.edgeFromProbs(probs, mCtx);\n    const best  = edges[0].edge >= edges[1].edge ? edges[0] : edges[1];\n\n    const base = {\n      question:      market.question,\n      questionType:  market.questionType,\n      strike:        market.strike,\n      distancePct:   market.strike ? ((market.strike - spot) / spot * 100).toFixed(2) + \"%\" : null,\n      hoursToExpiry: market.hoursToExpiry,\n      pYesBase:      +pYesBase.toFixed(4),\n      pYesAdj:       +pYes.toFixed(4),\n      probs:         probs.map(p => +p.toFixed(4)),\n    };\n\n    if (best.edge < EDGE_THRESHOLD) {\n      return { ...base, decision: \"hold\", bestEdge: +best.edge.toFixed(4), edges };\n    }\n    return {\n      ...base,\n      decision:    \"buy\",\n      side:        best.label,\n      fairPrice:   +best.fairPrice.toFixed(4),\n      marketPrice: +best.marketPrice.toFixed(4),\n      edge:        +best.edge.toFixed(4),\n      edges,\n    };\n  } catch (err) {\n    return { question: market.question, decision: \"hold\", reason: String(err) };\n  }\n});\n",
+  "durationMs": 1,
+  "result": [
+    {
+      "question": "Will the price of Bitcoin be above $62,000 on April 17?",
+      "decision": "hold",
+      "questionType": "above",
+      "strike": 62000,
+      "distancePct": "-18.15%",
+      "hoursToExpiry": 6.991944722222223,
+      "pYesBase": 1,
+      "pYesAdj": 1,
+      "probs": [
+        1,
+        0
+      ],
+      "bestEdge": 0.0005,
+      "edges": [
+        {
+          "index": 0,
+          "label": "Yes",
+          "fairPrice": 0.9999991047853287,
+          "marketPrice": 0.9995,
+          "edge": 0.0004991047853286634,
+          "bestBid": 0.999,
+          "bestAsk": null
+        },
+        {
+          "index": 1,
+          "label": "No",
+          "fairPrice": 8.952146712815079e-7,
+          "marketPrice": 0.001,
+          "edge": -0.0009991047853287185,
+          "bestBid": null,
+          "bestAsk": 0.001
+        }
+      ]
+    },
+    {
+      "question": "Will the price of Bitcoin be above $64,000 on April 17?",
+      "decision": "hold",
+      "questionType": "above",
+      "strike": 64000,
+      "distancePct": "-15.51%",
+      "hoursToExpiry": 6.991944722222223,
+      "pYesBase": 1,
+      "pYesAdj": 1,
+      "probs": [
+        1,
+        0
+      ],
+      "bestEdge": 0.0005,
+      "edges": [
+        {
+          "index": 0,
+          "label": "Yes",
+          "fairPrice": 0.9999991047853287,
+          "marketPrice": 0.9995,
+          "edge": 0.0004991047853286634,
+          "bestBid": 0.999,
+          "bestAsk": null
+        },
+        {
+          "index": 1,
+          "label": "No",
+          "fairPrice": 8.952146712815079e-7,
+          "marketPrice": 0.001,
+          "edge": -0.0009991047853287185,
+          "bestBid": null,
+          "bestAsk": 0.001
+        }
+      ]
+    },
+    {
+      "question": "Will the price of Bitcoin be above $66,000 on April 17?",
+      "decision": "hold",
+      "questionType": "above",
+      "strike": 66000,
+      "distancePct": "-12.87%",
+      "hoursToExpiry": 6.991944722222223,
+      "pYesBase": 1,
+      "pYesAdj": 1,
+      "probs": [
+        1,
+        0
+      ],
+      "bestEdge": 0.0005,
+      "edges": [
+        {
+          "index": 0,
+          "label": "Yes",
+          "fairPrice": 0.9999991047853287,
+          "marketPrice": 0.9995,
+          "edge": 0.0004991047853286634,
+          "bestBid": 0.999,
+          "bestAsk": null
+        },
+        {
+          "index": 1,
+          "label": "No",
+          "fairPrice": 8.952146712815079e-7,
+          "marketPrice": 0.001,
+          "edge": -0.0009991047853287185,
+          "bestBid": null,
+          "bestAsk": 0.001
+        }
+      ]
+    },
+    {
+      "question": "Will the price of Bitcoin be above $68,000 on April 17?",
+      "decision": "hold",
+      "questionType": "above",
+      "strike": 68000,
+      "distancePct": "-10.23%",
+      "hoursToExpiry": 6.991944722222223,
+      "pYesBase": 1,
+      "pYesAdj": 1,
+      "probs": [
+        1,
+        0
+      ],
+      "bestEdge": 0.0005,
+      "edges": [
+        {
+          "index": 0,
+          "label": "Yes",
+          "fairPrice": 0.9999991047853287,
+          "marketPrice": 0.9995,
+          "edge": 0.0004991047853286634,
+          "bestBid": 0.999,
+          "bestAsk": null
+        },
+        {
+          "index": 1,
+          "label": "No",
+          "fairPrice": 8.952146712815079e-7,
+          "marketPrice": 0.001,
+          "edge": -0.0009991047853287185,
+          "bestBid": null,
+          "bestAsk": 0.001
+        }
+      ]
+    },
+    {
+      "question": "Will the price of Bitcoin be above $70,000 on April 17?",
+      "decision": "hold",
+      "questionType": "above",
+      "strike": 70000,
+      "distancePct": "-7.58%",
+      "hoursToExpiry": 6.991944722222223,
+      "pYesBase": 1,
+      "pYesAdj": 1,
+      "probs": [
+        1,
+        0
+      ],
+      "bestEdge": 0.001,
+      "edges": [
+        {
+          "index": 0,
+          "label": "Yes",
+          "fairPrice": 0.9999991047853287,
+          "marketPrice": 0.999,
+          "edge": 0.0009991047853287194,
+          "bestBid": 0.998,
+          "bestAsk": 0.999
+        },
+        {
+          "index": 1,
+          "label": "No",
+          "fairPrice": 8.952146712815079e-7,
+          "marketPrice": 0.002,
+          "edge": -0.0019991047853287185,
+          "bestBid": 0.001,
+          "bestAsk": 0.002
+        }
+      ]
+    },
+    {
+      "question": "Will the price of Bitcoin be above $72,000 on April 17?",
+      "decision": "hold",
+      "questionType": "above",
+      "strike": 72000,
+      "distancePct": "-4.94%",
+      "hoursToExpiry": 6.991944722222223,
+      "pYesBase": 1,
+      "pYesAdj": 1,
+      "probs": [
+        1,
+        0
+      ],
+      "bestEdge": 0.008,
+      "edges": [
+        {
+          "index": 0,
+          "label": "Yes",
+          "fairPrice": 0.9999991047853287,
+          "marketPrice": 0.992,
+          "edge": 0.007999104785328726,
+          "bestBid": 0.99,
+          "bestAsk": 0.992
+        },
+        {
+          "index": 1,
+          "label": "No",
+          "fairPrice": 8.952146712815079e-7,
+          "marketPrice": 0.01,
+          "edge": -0.009999104785328719,
+          "bestBid": 0.008,
+          "bestAsk": 0.01
+        }
+      ]
+    },
+    {
+      "question": "Will the price of Bitcoin be above $74,000 on April 17?",
+      "decision": "hold",
+      "questionType": "above",
+      "strike": 74000,
+      "distancePct": "-2.30%",
+      "hoursToExpiry": 6.991944722222223,
+      "pYesBase": 0.9912,
+      "pYesAdj": 0.9921,
+      "probs": [
+        0.9921,
+        0.0079
+      ],
+      "bestEdge": 0.0321,
+      "edges": [
+        {
+          "index": 0,
+          "label": "Yes",
+          "fairPrice": 0.9920731213873559,
+          "marketPrice": 0.96,
+          "edge": 0.03207312138735596,
+          "bestBid": 0.95,
+          "bestAsk": 0.96
+        },
+        {
+          "index": 1,
+          "label": "No",
+          "fairPrice": 0.007926878612644073,
+          "marketPrice": 0.05,
+          "edge": -0.04207312138735593,
+          "bestBid": 0.04,
+          "bestAsk": 0.05
+        }
+      ]
+    },
+    {
+      "question": "Will the price of Bitcoin be above $76,000 on April 17?",
+      "decision": "hold",
+      "questionType": "above",
+      "strike": 76000,
+      "distancePct": "0.34%",
+      "hoursToExpiry": 6.991944722222223,
+      "pYesBase": 0.362,
+      "pYesAdj": 0.3879,
+      "probs": [
+        0.3879,
+        0.6121
+      ],
+      "bestEdge": 0.0021,
+      "edges": [
+        {
+          "index": 0,
+          "label": "Yes",
+          "fairPrice": 0.38792518846602264,
+          "marketPrice": 0.4,
+          "edge": -0.012074811533977381,
+          "bestBid": 0.39,
+          "bestAsk": 0.4
+        },
+        {
+          "index": 1,
+          "label": "No",
+          "fairPrice": 0.6120748115339774,
+          "marketPrice": 0.61,
+          "edge": 0.002074811533977372,
+          "bestBid": 0.6,
+          "bestAsk": 0.61
+        }
+      ]
+    },
+    {
+      "question": "Will the price of Bitcoin be above $78,000 on April 17?",
+      "decision": "hold",
+      "questionType": "above",
+      "strike": 78000,
+      "distancePct": "2.98%",
+      "hoursToExpiry": 6.991944722222223,
+      "pYesBase": 0.0013,
+      "pYesAdj": 0.0015,
+      "probs": [
+        0.0015,
+        0.9985
+      ],
+      "bestEdge": 0.0245,
+      "edges": [
+        {
+          "index": 0,
+          "label": "Yes",
+          "fairPrice": 0.0014711632846800353,
+          "marketPrice": 0.03,
+          "edge": -0.028528836715319965,
+          "bestBid": 0.026,
+          "bestAsk": 0.03
+        },
+        {
+          "index": 1,
+          "label": "No",
+          "fairPrice": 0.99852883671532,
+          "marketPrice": 0.974,
+          "edge": 0.024528836715320024,
+          "bestBid": 0.97,
+          "bestAsk": 0.974
+        }
+      ]
+    },
+    {
+      "question": "Will the price of Bitcoin be above $80,000 on April 17?",
+      "decision": "hold",
+      "questionType": "above",
+      "strike": 80000,
+      "distancePct": "5.62%",
+      "hoursToExpiry": 6.991944722222223,
+      "pYesBase": 0,
+      "pYesAdj": 0,
+      "probs": [
+        0,
+        1
+      ],
+      "bestEdge": 0.001,
+      "edges": [
+        {
+          "index": 0,
+          "label": "Yes",
+          "fairPrice": 0.0000011170504905931006,
+          "marketPrice": 0.002,
+          "edge": -0.001998882949509407,
+          "bestBid": 0.001,
+          "bestAsk": 0.002
+        },
+        {
+          "index": 1,
+          "label": "No",
+          "fairPrice": 0.9999988829495094,
+          "marketPrice": 0.999,
+          "edge": 0.0009988829495094498,
+          "bestBid": 0.998,
+          "bestAsk": 0.999
+        }
+      ]
+    },
+    {
+      "question": "Will the price of Bitcoin be above $82,000 on April 17?",
+      "decision": "hold",
+      "questionType": "above",
+      "strike": 82000,
+      "distancePct": "8.26%",
+      "hoursToExpiry": 6.991944722222223,
+      "pYesBase": 0,
+      "pYesAdj": 0,
+      "probs": [
+        0,
+        1
+      ],
+      "bestEdge": 0.0005,
+      "edges": [
+        {
+          "index": 0,
+          "label": "Yes",
+          "fairPrice": 0.0000011170504905931006,
+          "marketPrice": 0.001,
+          "edge": -0.0009988829495094068,
+          "bestBid": null,
+          "bestAsk": 0.001
+        },
+        {
+          "index": 1,
+          "label": "No",
+          "fairPrice": 0.9999988829495094,
+          "marketPrice": 0.9995,
+          "edge": 0.0004988829495093938,
+          "bestBid": 0.999,
+          "bestAsk": null
+        }
+      ]
+    }
+  ]
+}

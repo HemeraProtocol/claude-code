@@ -118,7 +118,9 @@ describe('bsRange', () => {
   test('throws when strike2 is missing', () => {
     const ctx = makeRangeCtx()
     ctx.market.strike2 = null as any
-    expect(() => helpers.bsRange(ctx, { sigmaOverride: 0.3 })).toThrow(/strike2/)
+    expect(() => helpers.bsRange(ctx, { sigmaOverride: 0.3 })).toThrow(
+      /strike2/,
+    )
   })
 })
 
@@ -142,7 +144,10 @@ describe('firstHitProbabilities', () => {
   test('returns [1, 0]-aligned outcome when spot is at/below lower barrier', () => {
     const ctx = makeFirstHitCtx()
     ctx.underlying.price = 85_000 // below lower
-    const probs = helpers.firstHitProbabilities(ctx, { sigmaOverride: 0.5, seed: 42 })
+    const probs = helpers.firstHitProbabilities(ctx, {
+      sigmaOverride: 0.5,
+      seed: 42,
+    })
     // $90k side should win (1.0), $110k side should be 0
     expect(probs[0]).toBe(1)
     expect(probs[1]).toBe(0)
@@ -150,8 +155,16 @@ describe('firstHitProbabilities', () => {
 
   test('Monte Carlo path is deterministic under a fixed seed', () => {
     const ctx = makeFirstHitCtx()
-    const a = helpers.firstHitProbabilities(ctx, { sigmaOverride: 0.5, seed: 12345, simPaths: 800 })
-    const b = helpers.firstHitProbabilities(ctx, { sigmaOverride: 0.5, seed: 12345, simPaths: 800 })
+    const a = helpers.firstHitProbabilities(ctx, {
+      sigmaOverride: 0.5,
+      seed: 12345,
+      simPaths: 800,
+    })
+    const b = helpers.firstHitProbabilities(ctx, {
+      sigmaOverride: 0.5,
+      seed: 12345,
+      simPaths: 800,
+    })
     expect(a).toEqual(b)
   })
 
@@ -177,11 +190,17 @@ describe('firstHitProbabilities', () => {
           { label: '$80k', price: 0.6, bestAsk: 0.61 },
         ],
       },
-      underlying: { price: 85_000, realizedVol: { '1h': 0.5 }, realizedVolWarnings: [] },
+      underlying: {
+        price: 85_000,
+        realizedVol: { '1h': 0.5 },
+        realizedVolWarnings: [],
+      },
       timing: { nowTs: 0 },
     }
     // Spot above upper → $80k wins
-    expect(helpers.firstHitProbabilities(ctx, { sigmaOverride: 0.5 })).toEqual([0, 1])
+    expect(helpers.firstHitProbabilities(ctx, { sigmaOverride: 0.5 })).toEqual([
+      0, 1,
+    ])
   })
 })
 
@@ -190,7 +209,10 @@ describe('firstHitProbabilities', () => {
 describe('vol', () => {
   test('returns the requested window', () => {
     const ctx = {
-      underlying: { realizedVol: { '1h': 0.3, '24h': 0.5 }, realizedVolWarnings: [] },
+      underlying: {
+        realizedVol: { '1h': 0.3, '24h': 0.5 },
+        realizedVolWarnings: [],
+      },
     }
     expect(helpers.vol(ctx, '24h')).toBe(0.5)
   })
@@ -209,14 +231,20 @@ describe('vol', () => {
 describe('volRatio', () => {
   test('compares two windows', () => {
     const ctx = {
-      underlying: { realizedVol: { '1h': 0.3, '30d': 0.6 }, realizedVolWarnings: [] },
+      underlying: {
+        realizedVol: { '1h': 0.3, '30d': 0.6 },
+        realizedVolWarnings: [],
+      },
     }
     expect(helpers.volRatio(ctx, '1h', '30d')).toBeCloseTo(0.5, 8)
   })
 
   test('throws when the long window has zero vol', () => {
     const ctx = {
-      underlying: { realizedVol: { '1h': 0.3, '30d': 0 }, realizedVolWarnings: [] },
+      underlying: {
+        realizedVol: { '1h': 0.3, '30d': 0 },
+        realizedVolWarnings: [],
+      },
     }
     expect(() => helpers.volRatio(ctx, '1h', '30d')).toThrow(/long/i)
   })
@@ -245,8 +273,8 @@ describe('noArbResidual', () => {
     const ctx = {
       market: {
         outcomes: [
-          { label: 'Yes', price: 0.5, bestAsk: 0.55, bestBid: 0.50 },
-          { label: 'No', price: 0.5, bestAsk: 0.50, bestBid: 0.45 },
+          { label: 'Yes', price: 0.5, bestAsk: 0.55, bestBid: 0.5 },
+          { label: 'No', price: 0.5, bestAsk: 0.5, bestBid: 0.45 },
         ],
       },
     }
@@ -271,9 +299,19 @@ describe('edgeFromProbs', () => {
       },
     }
     const edges = helpers.edgeFromProbs([0.2, 0.8], ctx)
-    expect(edges[0]).toMatchObject({ index: 0, label: '$60k', fairPrice: 0.2, marketPrice: 0.36 })
+    expect(edges[0]).toMatchObject({
+      index: 0,
+      label: '$60k',
+      fairPrice: 0.2,
+      marketPrice: 0.36,
+    })
     expect(edges[0].edge).toBeCloseTo(-0.16, 8)
-    expect(edges[1]).toMatchObject({ index: 1, label: '$80k', fairPrice: 0.8, marketPrice: 0.56 })
+    expect(edges[1]).toMatchObject({
+      index: 1,
+      label: '$80k',
+      fairPrice: 0.8,
+      marketPrice: 0.56,
+    })
     expect(edges[1].edge).toBeCloseTo(0.24, 8)
   })
 
@@ -286,7 +324,9 @@ describe('edgeFromProbs', () => {
         ],
       },
     }
-    expect(() => helpers.edgeFromProbs([1.3 as any, 0.2 as any], ctx)).toThrow(/sum to 1/)
+    expect(() => helpers.edgeFromProbs([1.3 as any, 0.2 as any], ctx)).toThrow(
+      /sum to 1/,
+    )
   })
 
   test('throws when a probability is not finite', () => {
@@ -298,7 +338,9 @@ describe('edgeFromProbs', () => {
         ],
       },
     }
-    expect(() => helpers.edgeFromProbs([NaN as any, 0.5 as any], ctx)).toThrow(/finite/)
+    expect(() => helpers.edgeFromProbs([NaN as any, 0.5 as any], ctx)).toThrow(
+      /finite/,
+    )
   })
 })
 
@@ -326,7 +368,11 @@ describe('resolveVolAndTime via bsAbove', () => {
     // Only market.expiryTs is set — timing has no expiryTs field.
     const ctx = {
       market: { strike: 100, expiryTs: 86_400_000 },
-      underlying: { price: 100, realizedVol: { '1h': 0.3 }, realizedVolWarnings: [] },
+      underlying: {
+        price: 100,
+        realizedVol: { '1h': 0.3 },
+        realizedVolWarnings: [],
+      },
       timing: { nowTs: 0 },
     }
     const p = helpers.bsAbove(ctx, { sigmaOverride: 0.3 })
@@ -338,7 +384,11 @@ describe('resolveVolAndTime via bsAbove', () => {
   test('falls back to ctx.timing.expiryTs when market.expiryTs is absent', () => {
     const ctx = {
       market: { strike: 100 },
-      underlying: { price: 100, realizedVol: { '1h': 0.3 }, realizedVolWarnings: [] },
+      underlying: {
+        price: 100,
+        realizedVol: { '1h': 0.3 },
+        realizedVolWarnings: [],
+      },
       timing: { nowTs: 0, expiryTs: 86_400_000 },
     }
     const p = helpers.bsAbove(ctx, { sigmaOverride: 0.3 })
@@ -349,10 +399,16 @@ describe('resolveVolAndTime via bsAbove', () => {
   test('throws when neither market nor timing has expiryTs', () => {
     const ctx = {
       market: { strike: 100 },
-      underlying: { price: 100, realizedVol: { '1h': 0.3 }, realizedVolWarnings: [] },
+      underlying: {
+        price: 100,
+        realizedVol: { '1h': 0.3 },
+        realizedVolWarnings: [],
+      },
       timing: { nowTs: 0 },
     }
-    expect(() => helpers.bsAbove(ctx, { sigmaOverride: 0.3 })).toThrow(/expiryTs/)
+    expect(() => helpers.bsAbove(ctx, { sigmaOverride: 0.3 })).toThrow(
+      /expiryTs/,
+    )
   })
 })
 
@@ -372,17 +428,16 @@ describe('eventPrimaryQuestionType', () => {
 
   test('returns null when multiple non-unknown types are present', () => {
     const ctx = {
-      markets: [
-        { questionType: 'above' },
-        { questionType: 'hit' },
-      ],
+      markets: [{ questionType: 'above' }, { questionType: 'hit' }],
     }
     expect(helpers.eventPrimaryQuestionType(ctx)).toBeNull()
   })
 
   test('throws when all markets are unknown', () => {
     const ctx = { markets: [{ questionType: 'unknown' }] }
-    expect(() => helpers.eventPrimaryQuestionType(ctx)).toThrow(/no supported questionType/)
+    expect(() => helpers.eventPrimaryQuestionType(ctx)).toThrow(
+      /no supported questionType/,
+    )
   })
 })
 
@@ -525,7 +580,9 @@ describe('no-underlying guard', () => {
   }
 
   test('bsAbove throws when ctx.underlying is undefined', () => {
-    expect(() => helpers.bsAbove(makePoliticsCtx())).toThrow('requires ctx.underlying')
+    expect(() => helpers.bsAbove(makePoliticsCtx())).toThrow(
+      'requires ctx.underlying',
+    )
   })
 
   test('bsRange throws when ctx.underlying is undefined', () => {

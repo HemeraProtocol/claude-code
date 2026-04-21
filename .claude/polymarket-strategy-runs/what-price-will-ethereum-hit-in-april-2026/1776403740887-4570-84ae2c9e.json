@@ -1,0 +1,677 @@
+{
+  "schemaVersion": 2,
+  "timestamp": "2026-04-17T05:30:12.634Z",
+  "status": "success",
+  "ctxPath": "/tmp/polymarket-ctx-what-price-will-ethereum-hit-in-april-2026-4570-84ae2c9e.json",
+  "ctxHash": "12607862284570941116",
+  "helpersModulePath": "/Users/linxuan/Desktop/claude_code_research/claude-code/.claude/skills/polymarket-strategy/helpers.ts",
+  "helpersHash": "18148763106966049132",
+  "gitCommit": "86f1d879f39fa32b3f30a2808f54d27c757bf170",
+  "code": "\n// =====================\n// Thresholds & weights\n// =====================\nconst EDGE_THRESHOLD      = 0.04;\nconst MOMENTUM_WEIGHT     = 0.30; // log-odds shift scale for momentum\nconst RSI_NEUTRAL         = 50;\nconst RSI_NORM_RANGE      = 20;   // ±20 from neutral → ±1\nconst RANDOM_SEED         = 42;\n\nconst logit   = (p) => Math.log(p / (1 - p));\nconst sigmoid = (x) => 1 / (1 + Math.exp(-x));\nconst clamp   = (v, lo, hi) => Math.max(lo, Math.min(hi, v));\n\n// =====================\n// Event-scope features (computed once)\n// =====================\nconst klines = ctx.underlying.klines;\nconst closes  = klines.map(k => k.close);\nconst highs   = klines.map(k => k.high);\nconst lows    = klines.map(k => k.low);\nconst n       = closes.length;\n\n// RSI(14)\nconst rsiVal    = ctx.helpers.rsi(closes, 14);\nconst rsiSignal = clamp((rsiVal - RSI_NEUTRAL) / RSI_NORM_RANGE, -1, 1);\n\n// EMA(12) / EMA(26) cross\nconst ema12     = ctx.helpers.emaArray(closes, 12).at(-1);\nconst ema26     = ctx.helpers.emaArray(closes, 26).at(-1);\nconst emaCross  = ema12 - ema26;\nconst emaSignal = emaCross > 0 ? 1 : -1;\n\n// MACD histogram\nconst ema12Arr  = ctx.helpers.emaArray(closes, 12);\nconst ema26Arr  = ctx.helpers.emaArray(closes, 26);\nconst macdLine  = ema12Arr.map((v, i) => v - ema26Arr[i]);\nconst signalArr = ctx.helpers.emaArray(macdLine, 9);\nconst macdHist  = macdLine.at(-1) - signalArr.at(-1);\nconst macdSignal = clamp(macdHist / closes[n-1] / 0.01, -1, 1); // normalize by ~1% price\n\n// Short-term momentum (1h return)\nconst ret1h        = n >= 2 ? (closes[n-1] - closes[n-2]) / closes[n-2] : 0;\nconst momentumSignal = clamp(ret1h / 0.02, -1, 1); // normalize by 2% move\n\n// ATR(14) / price — vol regime (confidence weight)\nlet atr = 0;\nif (n >= 15) {\n  const trs = [];\n  for (let i = 1; i < n; i++) {\n    const tr = Math.max(highs[i]-lows[i], Math.abs(highs[i]-closes[i-1]), Math.abs(lows[i]-closes[i-1]));\n    trs.push(tr);\n  }\n  let atrVal = trs.slice(0, 14).reduce((a, b) => a + b, 0) / 14;\n  for (let i = 14; i < trs.length; i++) atrVal = (atrVal * 13 + trs[i]) / 14;\n  atr = atrVal;\n}\nconst atrRatio = closes[n-1] > 0 ? atr / closes[n-1] : 0.02;\n\n// Composite momentum signal → log-odds shift\n// Higher ATR = higher vol = momentum signal gets wider confidence\nconst compositeSignal = (rsiSignal * 0.25 + emaSignal * 0.25 + macdSignal * 0.25 + momentumSignal * 0.25);\nconst logOddsShift    = compositeSignal * MOMENTUM_WEIGHT;\n\n// =====================\n// Market-type detection\n// =====================\nconst et = ctx.helpers.eventPrimaryQuestionType(ctx);\n\n// =====================\n// Per-market output\n// =====================\nreturn ctx.markets.map(market => {\n  try {\n    if (market.closed || market.hoursToExpiry < 0) {\n      return { question: market.question, decision: \"hold\", reason: \"closed or expired\" };\n    }\n\n    const mCtx = { market, underlying: ctx.underlying, timing: ctx.timing };\n    let probs;\n\n    // firstHit: returns aligned [p0, p1] from Monte Carlo — special case\n    if (market.questionType === \"firstHit\") {\n      const baseProbs = ctx.helpers.firstHitProbabilities(mCtx, { seed: RANDOM_SEED });\n      // Adjust p0 (first outcome) in log-odds; p1 = 1 - p0adj (valid simplex)\n      const p0 = clamp(baseProbs[0], 1e-6, 1 - 1e-6);\n      const p0adj = sigmoid(logit(p0) + logOddsShift);\n      probs = [p0adj, 1 - p0adj];\n    } else {\n      // Scalar yes-prob types: above / below / hit / range\n      let pYes;\n      switch (market.questionType) {\n        case \"above\": pYes = ctx.helpers.bsAbove(mCtx); break;\n        case \"below\": pYes = 1 - ctx.helpers.bsAbove(mCtx); break;\n        case \"hit\":   pYes = ctx.helpers.bsOneTouch(mCtx); break;\n        case \"range\": pYes = ctx.helpers.bsRange(mCtx); break;\n        default:\n          return { question: market.question, decision: \"hold\", reason: `unsupported type: ${market.questionType}` };\n      }\n      pYes = sigmoid(logit(clamp(pYes, 1e-6, 1 - 1e-6)) + logOddsShift);\n      probs = ctx.helpers.binaryProbsFromYesProb(mCtx, pYes);\n    }\n\n    const edges  = ctx.helpers.edgeFromProbs(probs, mCtx);\n    const best   = edges[0].edge >= edges[1].edge ? edges[0] : edges[1];\n    const worst  = edges[0].edge < edges[1].edge ? edges[0] : edges[1];\n\n    if (best.edge < EDGE_THRESHOLD) {\n      return {\n        question:      market.question,\n        questionType:  market.questionType,\n        decision:      \"hold\",\n        edge:          best.edge,\n        probs,\n        edges,\n        hoursToExpiry: market.hoursToExpiry,\n      };\n    }\n\n    return {\n      question:      market.question,\n      questionType:  market.questionType,\n      decision:      \"buy\",\n      side:          best.label,\n      fairPrice:     best.fairPrice,\n      marketPrice:   best.marketPrice,\n      edge:          best.edge,\n      probs,\n      edges,\n      hoursToExpiry: market.hoursToExpiry,\n      indicators: {\n        spotPrice:    closes[n-1],\n        atrRatio,\n        rsi14:        rsiVal,\n        ema12, ema26,\n        emaCross,\n        macdHist,\n        ret1h,\n        rsiSignal, emaSignal, macdSignal, momentumSignal,\n        compositeSignal,\n        logOddsShift,\n      },\n    };\n  } catch (err) {\n    return { question: market.question, decision: \"hold\", reason: String(err) };\n  }\n});\n",
+  "durationMs": 1,
+  "result": [
+    {
+      "question": "Will Ethereum reach $4,000 in April?",
+      "decision": "hold",
+      "questionType": "hit",
+      "edge": 0.002999113481840898,
+      "probs": [
+        8.86518159102499e-7,
+        0.9999991134818409
+      ],
+      "edges": [
+        {
+          "index": 0,
+          "label": "Yes",
+          "fairPrice": 8.86518159102499e-7,
+          "marketPrice": 0.004,
+          "edge": -0.003999113481840897,
+          "bestBid": 0.003,
+          "bestAsk": 0.004
+        },
+        {
+          "index": 1,
+          "label": "No",
+          "fairPrice": 0.9999991134818409,
+          "marketPrice": 0.997,
+          "edge": 0.002999113481840898,
+          "bestBid": 0.996,
+          "bestAsk": 0.997
+        }
+      ],
+      "hoursToExpiry": 334.5164208333333
+    },
+    {
+      "question": "Will Ethereum reach $3,800 in April?",
+      "decision": "hold",
+      "questionType": "hit",
+      "edge": 0.002999113481840898,
+      "probs": [
+        8.86518159102499e-7,
+        0.9999991134818409
+      ],
+      "edges": [
+        {
+          "index": 0,
+          "label": "Yes",
+          "fairPrice": 8.86518159102499e-7,
+          "marketPrice": 0.004,
+          "edge": -0.003999113481840897,
+          "bestBid": 0.003,
+          "bestAsk": 0.004
+        },
+        {
+          "index": 1,
+          "label": "No",
+          "fairPrice": 0.9999991134818409,
+          "marketPrice": 0.997,
+          "edge": 0.002999113481840898,
+          "bestBid": 0.996,
+          "bestAsk": 0.997
+        }
+      ],
+      "hoursToExpiry": 334.51642055555556
+    },
+    {
+      "question": "Will Ethereum reach $3,400 in April?",
+      "decision": "hold",
+      "questionType": "hit",
+      "edge": 0.0049991134818409,
+      "probs": [
+        8.86518159102499e-7,
+        0.9999991134818409
+      ],
+      "edges": [
+        {
+          "index": 0,
+          "label": "Yes",
+          "fairPrice": 8.86518159102499e-7,
+          "marketPrice": 0.006,
+          "edge": -0.005999113481840897,
+          "bestBid": 0.005,
+          "bestAsk": 0.006
+        },
+        {
+          "index": 1,
+          "label": "No",
+          "fairPrice": 0.9999991134818409,
+          "marketPrice": 0.995,
+          "edge": 0.0049991134818409,
+          "bestBid": 0.994,
+          "bestAsk": 0.995
+        }
+      ],
+      "hoursToExpiry": 334.51642055555556
+    },
+    {
+      "question": "Will Ethereum dip to $1,600 in April?",
+      "decision": "hold",
+      "questionType": "hit",
+      "edge": 0.020999113481840914,
+      "probs": [
+        8.86518159102499e-7,
+        0.9999991134818409
+      ],
+      "edges": [
+        {
+          "index": 0,
+          "label": "Yes",
+          "fairPrice": 8.86518159102499e-7,
+          "marketPrice": 0.025,
+          "edge": -0.0249991134818409,
+          "bestBid": 0.021,
+          "bestAsk": 0.025
+        },
+        {
+          "index": 1,
+          "label": "No",
+          "fairPrice": 0.9999991134818409,
+          "marketPrice": 0.979,
+          "edge": 0.020999113481840914,
+          "bestBid": 0.975,
+          "bestAsk": 0.979
+        }
+      ],
+      "hoursToExpiry": 334.51642055555556
+    },
+    {
+      "question": "Will Ethereum dip to $600 in April?",
+      "decision": "hold",
+      "questionType": "hit",
+      "edge": 0.002999113481840898,
+      "probs": [
+        8.86518159102499e-7,
+        0.9999991134818409
+      ],
+      "edges": [
+        {
+          "index": 0,
+          "label": "Yes",
+          "fairPrice": 8.86518159102499e-7,
+          "marketPrice": 0.004,
+          "edge": -0.003999113481840897,
+          "bestBid": 0.003,
+          "bestAsk": 0.004
+        },
+        {
+          "index": 1,
+          "label": "No",
+          "fairPrice": 0.9999991134818409,
+          "marketPrice": 0.997,
+          "edge": 0.002999113481840898,
+          "bestBid": 0.996,
+          "bestAsk": 0.997
+        }
+      ],
+      "hoursToExpiry": 334.51642055555556
+    },
+    {
+      "question": "Will Ethereum dip to $400 in April?",
+      "decision": "hold",
+      "questionType": "hit",
+      "edge": 0.0019991134818408973,
+      "probs": [
+        8.86518159102499e-7,
+        0.9999991134818409
+      ],
+      "edges": [
+        {
+          "index": 0,
+          "label": "Yes",
+          "fairPrice": 8.86518159102499e-7,
+          "marketPrice": 0.003,
+          "edge": -0.0029991134818408978,
+          "bestBid": 0.002,
+          "bestAsk": 0.003
+        },
+        {
+          "index": 1,
+          "label": "No",
+          "fairPrice": 0.9999991134818409,
+          "marketPrice": 0.998,
+          "edge": 0.0019991134818408973,
+          "bestBid": 0.997,
+          "bestAsk": 0.998
+        }
+      ],
+      "hoursToExpiry": 334.51642055555556
+    },
+    {
+      "question": "Will Ethereum reach $3,000 in April?",
+      "decision": "buy",
+      "questionType": "hit",
+      "side": "No",
+      "fairPrice": 0.9999991134818409,
+      "marketPrice": 0.957,
+      "edge": 0.042999113481840934,
+      "probs": [
+        8.86518159102499e-7,
+        0.9999991134818409
+      ],
+      "edges": [
+        {
+          "index": 0,
+          "label": "Yes",
+          "fairPrice": 8.86518159102499e-7,
+          "marketPrice": 0.045,
+          "edge": -0.044999113481840894,
+          "bestBid": 0.043,
+          "bestAsk": 0.045
+        },
+        {
+          "index": 1,
+          "label": "No",
+          "fairPrice": 0.9999991134818409,
+          "marketPrice": 0.957,
+          "edge": 0.042999113481840934,
+          "bestBid": 0.955,
+          "bestAsk": 0.957
+        }
+      ],
+      "hoursToExpiry": 334.51642055555556,
+      "indicators": {
+        "spotPrice": 2321.32,
+        "atrRatio": 0.0077400918615250095,
+        "rsi14": 42.6141876036297,
+        "ema12": 2333.6880770261723,
+        "ema26": 2336.8435640266516,
+        "emaCross": -3.1554870004792974,
+        "macdHist": -1.6884843530846432,
+        "ret1h": -0.003280434185215664,
+        "rsiSignal": -0.3692906198185149,
+        "emaSignal": -1,
+        "macdSignal": -0.07273811249998462,
+        "momentumSignal": -0.1640217092607832,
+        "compositeSignal": -0.40151261039482067,
+        "logOddsShift": -0.12045378311844619
+      }
+    },
+    {
+      "question": "Will Ethereum reach $2,600 in April?",
+      "decision": "buy",
+      "questionType": "hit",
+      "side": "No",
+      "fairPrice": 0.9922219574329049,
+      "marketPrice": 0.68,
+      "edge": 0.3122219574329048,
+      "probs": [
+        0.007778042567095092,
+        0.9922219574329049
+      ],
+      "edges": [
+        {
+          "index": 0,
+          "label": "Yes",
+          "fairPrice": 0.007778042567095092,
+          "marketPrice": 0.33,
+          "edge": -0.32222195743290494,
+          "bestBid": 0.32,
+          "bestAsk": 0.33
+        },
+        {
+          "index": 1,
+          "label": "No",
+          "fairPrice": 0.9922219574329049,
+          "marketPrice": 0.68,
+          "edge": 0.3122219574329048,
+          "bestBid": 0.67,
+          "bestAsk": 0.68
+        }
+      ],
+      "hoursToExpiry": 334.51642055555556,
+      "indicators": {
+        "spotPrice": 2321.32,
+        "atrRatio": 0.0077400918615250095,
+        "rsi14": 42.6141876036297,
+        "ema12": 2333.6880770261723,
+        "ema26": 2336.8435640266516,
+        "emaCross": -3.1554870004792974,
+        "macdHist": -1.6884843530846432,
+        "ret1h": -0.003280434185215664,
+        "rsiSignal": -0.3692906198185149,
+        "emaSignal": -1,
+        "macdSignal": -0.07273811249998462,
+        "momentumSignal": -0.1640217092607832,
+        "compositeSignal": -0.40151261039482067,
+        "logOddsShift": -0.12045378311844619
+      }
+    },
+    {
+      "question": "Will Ethereum reach $2,400 in April?",
+      "decision": "hold",
+      "reason": "closed or expired"
+    },
+    {
+      "question": "Will Ethereum reach $2,800 in April?",
+      "decision": "buy",
+      "questionType": "hit",
+      "side": "No",
+      "fairPrice": 0.9999870312487679,
+      "marketPrice": 0.89,
+      "edge": 0.10998703124876785,
+      "probs": [
+        0.000012968751232096224,
+        0.9999870312487679
+      ],
+      "edges": [
+        {
+          "index": 0,
+          "label": "Yes",
+          "fairPrice": 0.000012968751232096224,
+          "marketPrice": 0.114,
+          "edge": -0.11398703124876791,
+          "bestBid": 0.11,
+          "bestAsk": 0.114
+        },
+        {
+          "index": 1,
+          "label": "No",
+          "fairPrice": 0.9999870312487679,
+          "marketPrice": 0.89,
+          "edge": 0.10998703124876785,
+          "bestBid": 0.886,
+          "bestAsk": 0.89
+        }
+      ],
+      "hoursToExpiry": 334.51642055555556,
+      "indicators": {
+        "spotPrice": 2321.32,
+        "atrRatio": 0.0077400918615250095,
+        "rsi14": 42.6141876036297,
+        "ema12": 2333.6880770261723,
+        "ema26": 2336.8435640266516,
+        "emaCross": -3.1554870004792974,
+        "macdHist": -1.6884843530846432,
+        "ret1h": -0.003280434185215664,
+        "rsiSignal": -0.3692906198185149,
+        "emaSignal": -1,
+        "macdSignal": -0.07273811249998462,
+        "momentumSignal": -0.1640217092607832,
+        "compositeSignal": -0.40151261039482067,
+        "logOddsShift": -0.12045378311844619
+      }
+    },
+    {
+      "question": "Will Ethereum reach $2,200 in April?",
+      "decision": "hold",
+      "reason": "closed or expired"
+    },
+    {
+      "question": "Will Ethereum dip to $1,400 in April?",
+      "decision": "hold",
+      "questionType": "hit",
+      "edge": 0.006999113481840902,
+      "probs": [
+        8.86518159102499e-7,
+        0.9999991134818409
+      ],
+      "edges": [
+        {
+          "index": 0,
+          "label": "Yes",
+          "fairPrice": 8.86518159102499e-7,
+          "marketPrice": 0.011,
+          "edge": -0.010999113481840897,
+          "bestBid": 0.007,
+          "bestAsk": 0.011
+        },
+        {
+          "index": 1,
+          "label": "No",
+          "fairPrice": 0.9999991134818409,
+          "marketPrice": 0.993,
+          "edge": 0.006999113481840902,
+          "bestBid": 0.989,
+          "bestAsk": 0.993
+        }
+      ],
+      "hoursToExpiry": 334.51642055555556
+    },
+    {
+      "question": "Will Ethereum dip to $1,000 in April?",
+      "decision": "hold",
+      "questionType": "hit",
+      "edge": 0.003999113481840899,
+      "probs": [
+        8.86518159102499e-7,
+        0.9999991134818409
+      ],
+      "edges": [
+        {
+          "index": 0,
+          "label": "Yes",
+          "fairPrice": 8.86518159102499e-7,
+          "marketPrice": 0.005,
+          "edge": -0.004999113481840897,
+          "bestBid": 0.004,
+          "bestAsk": 0.005
+        },
+        {
+          "index": 1,
+          "label": "No",
+          "fairPrice": 0.9999991134818409,
+          "marketPrice": 0.996,
+          "edge": 0.003999113481840899,
+          "bestBid": 0.995,
+          "bestAsk": 0.996
+        }
+      ],
+      "hoursToExpiry": 334.51642055555556
+    },
+    {
+      "question": "Will Ethereum dip to $200 in April?",
+      "decision": "hold",
+      "questionType": "hit",
+      "edge": 0.0019991134818408973,
+      "probs": [
+        8.86518159102499e-7,
+        0.9999991134818409
+      ],
+      "edges": [
+        {
+          "index": 0,
+          "label": "Yes",
+          "fairPrice": 8.86518159102499e-7,
+          "marketPrice": 0.003,
+          "edge": -0.0029991134818408978,
+          "bestBid": 0.002,
+          "bestAsk": 0.003
+        },
+        {
+          "index": 1,
+          "label": "No",
+          "fairPrice": 0.9999991134818409,
+          "marketPrice": 0.998,
+          "edge": 0.0019991134818408973,
+          "bestBid": 0.997,
+          "bestAsk": 0.998
+        }
+      ],
+      "hoursToExpiry": 334.51642055555556
+    },
+    {
+      "question": "Will Ethereum reach $3,600 in April?",
+      "decision": "hold",
+      "questionType": "hit",
+      "edge": 0.003999113481840899,
+      "probs": [
+        8.86518159102499e-7,
+        0.9999991134818409
+      ],
+      "edges": [
+        {
+          "index": 0,
+          "label": "Yes",
+          "fairPrice": 8.86518159102499e-7,
+          "marketPrice": 0.005,
+          "edge": -0.004999113481840897,
+          "bestBid": 0.004,
+          "bestAsk": 0.005
+        },
+        {
+          "index": 1,
+          "label": "No",
+          "fairPrice": 0.9999991134818409,
+          "marketPrice": 0.996,
+          "edge": 0.003999113481840899,
+          "bestBid": 0.995,
+          "bestAsk": 0.996
+        }
+      ],
+      "hoursToExpiry": 334.51642055555556
+    },
+    {
+      "question": "Will Ethereum reach $3,200 in April?",
+      "decision": "hold",
+      "questionType": "hit",
+      "edge": 0.010999113481840905,
+      "probs": [
+        8.86518159102499e-7,
+        0.9999991134818409
+      ],
+      "edges": [
+        {
+          "index": 0,
+          "label": "Yes",
+          "fairPrice": 8.86518159102499e-7,
+          "marketPrice": 0.013,
+          "edge": -0.012999113481840897,
+          "bestBid": 0.011,
+          "bestAsk": 0.013
+        },
+        {
+          "index": 1,
+          "label": "No",
+          "fairPrice": 0.9999991134818409,
+          "marketPrice": 0.989,
+          "edge": 0.010999113481840905,
+          "bestBid": 0.987,
+          "bestAsk": 0.989
+        }
+      ],
+      "hoursToExpiry": 334.51642055555556
+    },
+    {
+      "question": "Will Ethereum dip to $2,000 in April?",
+      "decision": "buy",
+      "questionType": "hit",
+      "side": "No",
+      "fairPrice": 0.9994925473455314,
+      "marketPrice": 0.819,
+      "edge": 0.18049254734553144,
+      "probs": [
+        0.0005074526544686564,
+        0.9994925473455314
+      ],
+      "edges": [
+        {
+          "index": 0,
+          "label": "Yes",
+          "fairPrice": 0.0005074526544686564,
+          "marketPrice": 0.189,
+          "edge": -0.18849254734553134,
+          "bestBid": 0.181,
+          "bestAsk": 0.189
+        },
+        {
+          "index": 1,
+          "label": "No",
+          "fairPrice": 0.9994925473455314,
+          "marketPrice": 0.819,
+          "edge": 0.18049254734553144,
+          "bestBid": 0.811,
+          "bestAsk": 0.819
+        }
+      ],
+      "hoursToExpiry": 334.51642055555556,
+      "indicators": {
+        "spotPrice": 2321.32,
+        "atrRatio": 0.0077400918615250095,
+        "rsi14": 42.6141876036297,
+        "ema12": 2333.6880770261723,
+        "ema26": 2336.8435640266516,
+        "emaCross": -3.1554870004792974,
+        "macdHist": -1.6884843530846432,
+        "ret1h": -0.003280434185215664,
+        "rsiSignal": -0.3692906198185149,
+        "emaSignal": -1,
+        "macdSignal": -0.07273811249998462,
+        "momentumSignal": -0.1640217092607832,
+        "compositeSignal": -0.40151261039482067,
+        "logOddsShift": -0.12045378311844619
+      }
+    },
+    {
+      "question": "Will Ethereum dip to $1,800 in April?",
+      "decision": "buy",
+      "questionType": "hit",
+      "side": "No",
+      "fairPrice": 0.9999991134818409,
+      "marketPrice": 0.958,
+      "edge": 0.04199911348184093,
+      "probs": [
+        8.86518159102499e-7,
+        0.9999991134818409
+      ],
+      "edges": [
+        {
+          "index": 0,
+          "label": "Yes",
+          "fairPrice": 8.86518159102499e-7,
+          "marketPrice": 0.047,
+          "edge": -0.046999113481840896,
+          "bestBid": 0.042,
+          "bestAsk": 0.047
+        },
+        {
+          "index": 1,
+          "label": "No",
+          "fairPrice": 0.9999991134818409,
+          "marketPrice": 0.958,
+          "edge": 0.04199911348184093,
+          "bestBid": 0.953,
+          "bestAsk": 0.958
+        }
+      ],
+      "hoursToExpiry": 334.5164202777778,
+      "indicators": {
+        "spotPrice": 2321.32,
+        "atrRatio": 0.0077400918615250095,
+        "rsi14": 42.6141876036297,
+        "ema12": 2333.6880770261723,
+        "ema26": 2336.8435640266516,
+        "emaCross": -3.1554870004792974,
+        "macdHist": -1.6884843530846432,
+        "ret1h": -0.003280434185215664,
+        "rsiSignal": -0.3692906198185149,
+        "emaSignal": -1,
+        "macdSignal": -0.07273811249998462,
+        "momentumSignal": -0.1640217092607832,
+        "compositeSignal": -0.40151261039482067,
+        "logOddsShift": -0.12045378311844619
+      }
+    },
+    {
+      "question": "Will Ethereum dip to $800 in April?",
+      "decision": "hold",
+      "questionType": "hit",
+      "edge": 0.002999113481840898,
+      "probs": [
+        8.86518159102499e-7,
+        0.9999991134818409
+      ],
+      "edges": [
+        {
+          "index": 0,
+          "label": "Yes",
+          "fairPrice": 8.86518159102499e-7,
+          "marketPrice": 0.004,
+          "edge": -0.003999113481840897,
+          "bestBid": 0.003,
+          "bestAsk": 0.004
+        },
+        {
+          "index": 1,
+          "label": "No",
+          "fairPrice": 0.9999991134818409,
+          "marketPrice": 0.997,
+          "edge": 0.002999113481840898,
+          "bestBid": 0.996,
+          "bestAsk": 0.997
+        }
+      ],
+      "hoursToExpiry": 334.5164202777778
+    },
+    {
+      "question": "Will Ethereum dip to $1,200 in April?",
+      "decision": "hold",
+      "questionType": "hit",
+      "edge": 0.0049991134818409,
+      "probs": [
+        8.86518159102499e-7,
+        0.9999991134818409
+      ],
+      "edges": [
+        {
+          "index": 0,
+          "label": "Yes",
+          "fairPrice": 8.86518159102499e-7,
+          "marketPrice": 0.007,
+          "edge": -0.006999113481840897,
+          "bestBid": 0.005,
+          "bestAsk": 0.007
+        },
+        {
+          "index": 1,
+          "label": "No",
+          "fairPrice": 0.9999991134818409,
+          "marketPrice": 0.995,
+          "edge": 0.0049991134818409,
+          "bestBid": 0.993,
+          "bestAsk": 0.995
+        }
+      ],
+      "hoursToExpiry": 334.5164202777778
+    }
+  ]
+}

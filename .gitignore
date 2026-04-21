@@ -30,4 +30,4 @@ logs
 
 data
 
-.claude/polymarket-strategy-runs/*
+# .claude/polymarket-strategy-runs/ is tracked (signal history)

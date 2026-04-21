@@ -1,0 +1,196 @@
+{
+  "schemaVersion": 2,
+  "timestamp": "2026-04-15T09:49:53.593Z",
+  "status": "success",
+  "ctxPath": "/tmp/polymarket-ctx-bitcoin-price-on-april-15-13404-6b19782b.json",
+  "ctxHash": "2092727358492856650",
+  "helpersModulePath": "/Users/linxuan/Desktop/claude_code_research/claude-code/.claude/skills/polymarket-strategy/helpers.ts",
+  "helpersHash": "17483277944841519974",
+  "gitCommit": "9cb8407420fe77783b30eb432d11bee5d997a6b0",
+  "code": "// ─── Event-scope features (computed once) ────────────────────────────────\nconst closes = ctx.underlying.klines.map((k) => k.close);\nconst rsi = ctx.helpers.rsi(closes, 14);\nconst emaFast = ctx.helpers.emaArray(closes, 12).at(-1);\nconst emaSlow = ctx.helpers.emaArray(closes, 26).at(-1);\nconst emaTrend = Math.sign(emaFast - emaSlow);           // -1 | 0 | +1\n\nconst recentCloses = closes.slice(-4);\nconst shortMomentum =\n  recentCloses.length >= 2\n    ? (recentCloses.at(-1) - recentCloses[0]) / recentCloses[0]\n    : 0;\n\n// ─── Feature → drift + vol multiplier (clamped) ──────────────────────────\nconst clip = (x, lo, hi) => Math.max(lo, Math.min(hi, x));\n\nconst rsiBias = ((rsi - 50) / 50) * 0.02;\nconst emaBias = emaTrend * 0.015;\nconst momBias = clip(shortMomentum * 0.5, -0.015, 0.015);\nconst driftPct = clip(rsiBias + emaBias + momBias, -0.05, 0.05);\nconst volMult = 1 + Math.min(0.30, 2 * Math.abs(shortMomentum));\n\n// ─── Synthetic shifted underlying — reused by every market ───────────────\nconst baseVol =\n  ctx.underlying.realizedVol?.[\"1h\"] ??\n  ctx.underlying.realizedVol?.[\"24h\"] ??\n  null;\nconst sigmaOverride = baseVol !== null ? baseVol * volMult : undefined;\nconst shiftedUnderlying = {\n  ...ctx.underlying,\n  price: ctx.underlying.price * (1 + driftPct),\n};\n\n// ─── Per-questionType baseline selector (reads mCtx.underlying) ──────────\n// Not a dispatcher helper — explicit because the event is mixed-type.\nconst bucketYes = (mCtx, opts) => {\n  switch (mCtx.market.questionType) {\n    case \"above\":\n      return ctx.helpers.bsAbove(mCtx, opts);\n    case \"below\":\n      return 1 - ctx.helpers.bsAbove(mCtx, opts);\n    case \"range\":\n      return ctx.helpers.bsRange(mCtx, opts);\n    case \"hit\":\n      return ctx.helpers.bsOneTouch(mCtx, opts);\n    default:\n      return null; // signal caller to hold\n  }\n};\n\nconst THRESHOLD = 0.04;\n\nreturn ctx.markets.map((market) => {\n  try {\n    // Hard filters\n    if (market.closed || market.hoursToExpiry < 0) {\n      return {\n        question: market.question,\n        questionType: market.questionType,\n        expiryDate: market.expiryDate,\n        hoursToExpiry: market.hoursToExpiry,\n        decision: \"hold\",\n        reason: \"closed or expired\",\n        spot: ctx.underlying.price,\n        strike: market.strike,\n        strike2: market.strike2 ?? null,\n      };\n    }\n    if (\n      market.questionType === \"unknown\" ||\n      (market.strike === null && market.questionType !== \"directional\")\n    ) {\n      return {\n        question: market.question,\n        questionType: market.questionType,\n        expiryDate: market.expiryDate,\n        hoursToExpiry: market.hoursToExpiry,\n        decision: \"hold\",\n        reason: \"unknown type or missing strike\",\n        spot: ctx.underlying.price,\n        strike: market.strike,\n        strike2: market.strike2 ?? null,\n      };\n    }\n\n    // Build mCtx once — shifted underlying drives BOTH the drift AND vol mult\n    const mCtx = {\n      market,\n      underlying: shiftedUnderlying,\n      timing: ctx.timing,\n    };\n    const bsOpts = sigmaOverride !== undefined ? { sigmaOverride } : {};\n\n    // Price each bucket off the shifted distribution\n    let probs;\n    if (market.questionType === \"firstHit\") {\n      // Defensive branch: target event has no firstHit, but if one appears\n      // we still want a consistent shifted-underlying pricing.\n      probs = ctx.helpers.firstHitProbabilities(mCtx, {\n        ...bsOpts,\n        seed: 42,\n      });\n    } else if (market.questionType === \"directional\") {\n      // No strike → no BS baseline. Directional markets need microstructure\n      // edge, not distribution drift. Hold by default.\n      return {\n        question: market.question,\n        questionType: market.questionType,\n        expiryDate: market.expiryDate,\n        hoursToExpiry: market.hoursToExpiry,\n        decision: \"hold\",\n        reason: \"directional: no BS baseline under drift model\",\n        spot: ctx.underlying.price,\n        strike: market.strike,\n        strike2: market.strike2 ?? null,\n      };\n    } else {\n      const yes = bucketYes(mCtx, bsOpts);\n      if (yes === null) {\n        return {\n          question: market.question,\n          questionType: market.questionType,\n          expiryDate: market.expiryDate,\n          hoursToExpiry: market.hoursToExpiry,\n          decision: \"hold\",\n          reason: `unsupported questionType: ${market.questionType}`,\n          spot: ctx.underlying.price,\n          strike: market.strike,\n          strike2: market.strike2 ?? null,\n        };\n      }\n      probs = ctx.helpers.binaryProbsFromYesProb(mCtx, yes);\n    }\n\n    // Edge vs live orderbook — edgeFromProbs is strict on 2-simplex\n    const edges = ctx.helpers.edgeFromProbs(probs, mCtx);\n    const best = edges[0].edge >= edges[1].edge ? edges[0] : edges[1];\n\n    const reason =\n      `drift=${(driftPct * 100).toFixed(2)}% ` +\n      `volMult=${volMult.toFixed(2)} ` +\n      `edge=${best.edge.toFixed(3)}`;\n\n    const base = {\n      question: market.question,\n      questionType: market.questionType,\n      expiryDate: market.expiryDate,\n      hoursToExpiry: market.hoursToExpiry,\n      probs,\n      spot: ctx.underlying.price,\n      strike: market.strike,\n      strike2: market.strike2 ?? null,\n    };\n\n    if (best.edge < THRESHOLD) {\n      return { ...base, decision: \"hold\", edge: best.edge, reason };\n    }\n\n    return {\n      ...base,\n      decision: \"buy\",\n      side: best.label,\n      fairPrice: best.fairPrice,\n      marketPrice: best.marketPrice,\n      edge: best.edge,\n      reason,\n    };\n  } catch (err) {\n    return {\n      question: market.question,\n      questionType: market.questionType,\n      decision: \"hold\",\n      reason: `error: ${String(err && err.message ? err.message : err)}`,\n      spot: ctx.underlying.price,\n      strike: market.strike,\n      strike2: market.strike2 ?? null,\n    };\n  }\n});\n",
+  "durationMs": 1,
+  "result": [
+    {
+      "question": "Will the price of Bitcoin be between $78,000 and $80,000 on April 15?",
+      "decision": "hold",
+      "questionType": "range",
+      "expiryDate": "2026-04-15T16:00:00Z",
+      "hoursToExpiry": 6.2146469444444445,
+      "probs": [
+        0,
+        1
+      ],
+      "spot": 73971.42,
+      "strike": 78000,
+      "strike2": 80000,
+      "edge": 0.0010000000000000009,
+      "reason": "drift=1.46% volMult=1.00 edge=0.001"
+    },
+    {
+      "question": "Will the price of Bitcoin be less than $62,000 on April 15?",
+      "decision": "hold",
+      "questionType": "below",
+      "expiryDate": "2026-04-15T16:00:00Z",
+      "hoursToExpiry": 6.214646388888889,
+      "probs": [
+        0,
+        1
+      ],
+      "spot": 73971.42,
+      "strike": 62000,
+      "strike2": null,
+      "edge": 0.0004999999999999449,
+      "reason": "drift=1.46% volMult=1.00 edge=0.000"
+    },
+    {
+      "question": "Will the price of Bitcoin be between $62,000 and $64,000 on April 15?",
+      "decision": "hold",
+      "questionType": "range",
+      "expiryDate": "2026-04-15T16:00:00Z",
+      "hoursToExpiry": 6.214646388888889,
+      "probs": [
+        0,
+        1
+      ],
+      "spot": 73971.42,
+      "strike": 62000,
+      "strike2": 64000,
+      "edge": 0.0004999999999999449,
+      "reason": "drift=1.46% volMult=1.00 edge=0.000"
+    },
+    {
+      "question": "Will the price of Bitcoin be between $64,000 and $66,000 on April 15?",
+      "decision": "hold",
+      "questionType": "range",
+      "expiryDate": "2026-04-15T16:00:00Z",
+      "hoursToExpiry": 6.214645555555555,
+      "probs": [
+        0,
+        1
+      ],
+      "spot": 73971.42,
+      "strike": 64000,
+      "strike2": 66000,
+      "edge": 0.0004999999999999449,
+      "reason": "drift=1.46% volMult=1.00 edge=0.000"
+    },
+    {
+      "question": "Will the price of Bitcoin be between $66,000 and $68,000 on April 15?",
+      "decision": "hold",
+      "questionType": "range",
+      "expiryDate": "2026-04-15T16:00:00Z",
+      "hoursToExpiry": 6.214645555555555,
+      "probs": [
+        0,
+        1
+      ],
+      "spot": 73971.42,
+      "strike": 66000,
+      "strike2": 68000,
+      "edge": 0.0004999999999999449,
+      "reason": "drift=1.46% volMult=1.00 edge=0.000"
+    },
+    {
+      "question": "Will the price of Bitcoin be between $68,000 and $70,000 on April 15?",
+      "decision": "hold",
+      "questionType": "range",
+      "expiryDate": "2026-04-15T16:00:00Z",
+      "hoursToExpiry": 6.214645555555555,
+      "probs": [
+        0,
+        1
+      ],
+      "spot": 73971.42,
+      "strike": 68000,
+      "strike2": 70000,
+      "edge": 0.0010000000000000009,
+      "reason": "drift=1.46% volMult=1.00 edge=0.001"
+    },
+    {
+      "question": "Will the price of Bitcoin be between $70,000 and $72,000 on April 15?",
+      "decision": "hold",
+      "questionType": "range",
+      "expiryDate": "2026-04-15T16:00:00Z",
+      "hoursToExpiry": 6.214645555555555,
+      "probs": [
+        0,
+        1
+      ],
+      "spot": 73971.42,
+      "strike": 70000,
+      "strike2": 72000,
+      "edge": 0.027000000000000024,
+      "reason": "drift=1.46% volMult=1.00 edge=0.027"
+    },
+    {
+      "question": "Will the price of Bitcoin be between $72,000 and $74,000 on April 15?",
+      "decision": "buy",
+      "questionType": "range",
+      "expiryDate": "2026-04-15T16:00:00Z",
+      "hoursToExpiry": 6.214645555555555,
+      "probs": [
+        0.00005528119848696722,
+        0.999944718801513
+      ],
+      "spot": 73971.42,
+      "strike": 72000,
+      "strike2": 74000,
+      "side": "No",
+      "fairPrice": 0.999944718801513,
+      "marketPrice": 0.53,
+      "edge": 0.469944718801513,
+      "reason": "drift=1.46% volMult=1.00 edge=0.470"
+    },
+    {
+      "question": "Will the price of Bitcoin be between $74,000 and $76,000 on April 15?",
+      "decision": "buy",
+      "questionType": "range",
+      "expiryDate": "2026-04-15T16:00:00Z",
+      "hoursToExpiry": 6.214645555555555,
+      "probs": [
+        0.9996438193660739,
+        0.00035618063392606203
+      ],
+      "spot": 73971.42,
+      "strike": 74000,
+      "strike2": 76000,
+      "side": "Yes",
+      "fairPrice": 0.9996438193660739,
+      "marketPrice": 0.49,
+      "edge": 0.509643819366074,
+      "reason": "drift=1.46% volMult=1.00 edge=0.510"
+    },
+    {
+      "question": "Will the price of Bitcoin be between $76,000 and $78,000 on April 15?",
+      "decision": "hold",
+      "questionType": "range",
+      "expiryDate": "2026-04-15T16:00:00Z",
+      "hoursToExpiry": 6.214645555555555,
+      "probs": [
+        0.0003008994354391503,
+        0.9996991005645608
+      ],
+      "spot": 73971.42,
+      "strike": 76000,
+      "strike2": 78000,
+      "edge": 0.021699100564560814,
+      "reason": "drift=1.46% volMult=1.00 edge=0.022"
+    },
+    {
+      "question": "Will the price of Bitcoin be greater than $80,000 on April 15?",
+      "decision": "hold",
+      "questionType": "above",
+      "expiryDate": "2026-04-15T16:00:00Z",
+      "hoursToExpiry": 6.214645555555555,
+      "probs": [
+        0,
+        1
+      ],
+      "spot": 73971.42,
+      "strike": 80000,
+      "strike2": null,
+      "edge": 0.0004999999999999449,
+      "reason": "drift=1.46% volMult=1.00 edge=0.000"
+    }
+  ]
+}

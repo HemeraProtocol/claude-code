@@ -21,12 +21,23 @@ describe('parseQuestion', () => {
   })
 
   test('parses above/below markets', () => {
-    expect(parseQuestion('Will the price of Bitcoin be above $62,000 on April 15?').questionType).toBe('above')
-    expect(parseQuestion('Will the price of Ethereum be less than $1,800 on April 15?').questionType).toBe('below')
+    expect(
+      parseQuestion('Will the price of Bitcoin be above $62,000 on April 15?')
+        .questionType,
+    ).toBe('above')
+    expect(
+      parseQuestion(
+        'Will the price of Ethereum be less than $1,800 on April 15?',
+      ).questionType,
+    ).toBe('below')
   })
 
   test('parses range markets', () => {
-    expect(parseQuestion('Will the price of Ethereum be between $2,300 and $2,400 on April 15?')).toEqual({
+    expect(
+      parseQuestion(
+        'Will the price of Ethereum be between $2,300 and $2,400 on April 15?',
+      ),
+    ).toEqual({
       questionType: 'range',
       strike: 2_300,
       strike2: 2_400,
@@ -36,8 +47,12 @@ describe('parseQuestion', () => {
   })
 
   test('parses hit markets', () => {
-    expect(parseQuestion('Will Bitcoin reach $80,000 in April?').questionType).toBe('hit')
-    expect(parseQuestion('Will Bitcoin dip to $60,000 in April?').questionType).toBe('hit')
+    expect(
+      parseQuestion('Will Bitcoin reach $80,000 in April?').questionType,
+    ).toBe('hit')
+    expect(
+      parseQuestion('Will Bitcoin dip to $60,000 in April?').questionType,
+    ).toBe('hit')
   })
 
   test('parses first-hit markets', () => {
@@ -51,7 +66,11 @@ describe('parseQuestion', () => {
   })
 
   test('parses count-range markets', () => {
-    expect(parseQuestion('Will Elon Musk post 80-99 tweets from April 17 to April 24, 2026?')).toEqual({
+    expect(
+      parseQuestion(
+        'Will Elon Musk post 80-99 tweets from April 17 to April 24, 2026?',
+      ),
+    ).toEqual({
       questionType: 'count',
       strike: 80,
       strike2: 99,
@@ -61,7 +80,11 @@ describe('parseQuestion', () => {
   })
 
   test('parses count open-ended (N+) markets', () => {
-    expect(parseQuestion('Will Elon Musk post 580+ tweets from April 17 to April 24, 2026?')).toEqual({
+    expect(
+      parseQuestion(
+        'Will Elon Musk post 580+ tweets from April 17 to April 24, 2026?',
+      ),
+    ).toEqual({
       questionType: 'count',
       strike: 580,
       strike2: null,
@@ -71,10 +94,16 @@ describe('parseQuestion', () => {
   })
 
   test('parses count with en-dash separator', () => {
-    expect(parseQuestion('Will Elon Musk post 40–59 tweets from April 17 to April 24?').questionType).toBe('count')
+    expect(
+      parseQuestion(
+        'Will Elon Musk post 40–59 tweets from April 17 to April 24?',
+      ).questionType,
+    ).toBe('count')
   })
 
   test('marks unsupported wording as unknown', () => {
-    expect(parseQuestion('Will Bitcoin close in the green this week?').questionType).toBe('unknown')
+    expect(
+      parseQuestion('Will Bitcoin close in the green this week?').questionType,
+    ).toBe('unknown')
   })
 })

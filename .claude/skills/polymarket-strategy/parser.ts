@@ -52,7 +52,9 @@ export function parseQuestionByRules(question: string): ParsedQuestion {
   }
 
   // 2. Count range: "post 80-99 tweets" or "post 580+ tweets"
-  const countRangeMatch = question.match(/\bpost\s+(\d+)\s*[-–]\s*(\d+)\s+(?:tweets|posts)\b/i)
+  const countRangeMatch = question.match(
+    /\bpost\s+(\d+)\s*[-–]\s*(\d+)\s+(?:tweets|posts)\b/i,
+  )
   if (countRangeMatch) {
     const lo = Number(countRangeMatch[1])
     const hi = Number(countRangeMatch[2])
@@ -64,7 +66,9 @@ export function parseQuestionByRules(question: string): ParsedQuestion {
       confidence: 1,
     }
   }
-  const countAboveMatch = question.match(/\bpost\s+(\d+)\+\s+(?:tweets|posts)\b/i)
+  const countAboveMatch = question.match(
+    /\bpost\s+(\d+)\+\s+(?:tweets|posts)\b/i,
+  )
   if (countAboveMatch) {
     return {
       questionType: 'count',
@@ -77,7 +81,10 @@ export function parseQuestionByRules(question: string): ParsedQuestion {
 
   // 3. First-hit race: "hit $60k or $80k first"
   const firstHitMatch = question.match(
-    new RegExp(`\\bhit\\s+\\$${MONEY_CAPTURE}\\s+or\\s+\\$${MONEY_CAPTURE}\\s+first\\b`, 'i'),
+    new RegExp(
+      `\\bhit\\s+\\$${MONEY_CAPTURE}\\s+or\\s+\\$${MONEY_CAPTURE}\\s+first\\b`,
+      'i',
+    ),
   )
   if (firstHitMatch) {
     const a = parseMoneyValue(firstHitMatch[1]!, firstHitMatch[2]!)
@@ -93,7 +100,10 @@ export function parseQuestionByRules(question: string): ParsedQuestion {
 
   // 4. Range: "between $X and $Y"
   const rangeMatch = question.match(
-    new RegExp(`between\\s+\\$${MONEY_CAPTURE}\\s+and\\s+\\$${MONEY_CAPTURE}`, 'i'),
+    new RegExp(
+      `between\\s+\\$${MONEY_CAPTURE}\\s+and\\s+\\$${MONEY_CAPTURE}`,
+      'i',
+    ),
   )
   if (rangeMatch) {
     const a = parseMoneyValue(rangeMatch[1]!, rangeMatch[2]!)
@@ -119,7 +129,10 @@ export function parseQuestionByRules(question: string): ParsedQuestion {
   }
 
   // 6. Hit upward: "reach $X" or "hit $X"
-  if (/\breach\b/i.test(question) || (/\bhit\b/i.test(question) && moneyRegex().test(question))) {
+  if (
+    /\breach\b/i.test(question) ||
+    (/\bhit\b/i.test(question) && moneyRegex().test(question))
+  ) {
     return {
       questionType: 'hit',
       strike: parseFirstMoney(question),

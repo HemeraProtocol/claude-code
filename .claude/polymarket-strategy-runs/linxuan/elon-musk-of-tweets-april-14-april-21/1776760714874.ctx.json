@@ -1,0 +1,1073 @@
+{
+  "event": {
+    "slug": "elon-musk-of-tweets-april-14-april-21",
+    "title": "Elon Musk # tweets April 14 - April 21, 2026?",
+    "description": "This market will resolve according to the number of times Elon Musk (@elonmusk), posts on X from April 14 12:00 PM ET to April 21, 2026 12:00 PM ET.\n\nFor the purposes of this market, only main feed posts, quote posts and reposts will count.\n\nReplies will NOT count towards the total - however, replies on the main feed such as https://x.com/elonmusk/status/1786073478711353576 will be counted by the tracker.\n\nDeleted posts will count as long as they remain available long enough to be captured by the tracker (~5 minutes).\n\nCommunity reposts which are not counted by the tracker not count toward the total.\n\nThe resolution source for this market is the 'Post Counter' figure for posts found at https://xtracker.polymarket.com. Individual posts can be viewed by clicking \"Export Data\". If the tracker does not update correctly in accordance with the rules, X itself may be used as a secondary resolution source."
+  },
+  "markets": [
+    {
+      "slug": "elon-musk-of-tweets-april-14-april-21-0-19",
+      "question": "Will Elon Musk post 0-19 tweets from April 14 to April 21, 2026?",
+      "questionType": "count",
+      "kind": "absolute",
+      "strike": 0,
+      "strike2": 19,
+      "parser": "rules",
+      "confidence": 1,
+      "expiryDate": "2026-04-21T16:00:00Z",
+      "expiryTs": 1776787200000,
+      "hoursToExpiry": 7.356980555555555,
+      "outcomes": [
+        {
+          "label": "Yes",
+          "price": 0,
+          "bestBid": null,
+          "bestAsk": null
+        },
+        {
+          "label": "No",
+          "price": 1,
+          "bestBid": null,
+          "bestAsk": null
+        }
+      ],
+      "volume": 304767.43416600005,
+      "liquidity": null,
+      "active": true,
+      "closed": true
+    },
+    {
+      "slug": "elon-musk-of-tweets-april-14-april-21-20-39",
+      "question": "Will Elon Musk post 20-39 tweets from April 14 to April 21, 2026?",
+      "questionType": "count",
+      "kind": "absolute",
+      "strike": 20,
+      "strike2": 39,
+      "parser": "rules",
+      "confidence": 1,
+      "expiryDate": "2026-04-21T16:00:00Z",
+      "expiryTs": 1776787200000,
+      "hoursToExpiry": 7.356980555555555,
+      "outcomes": [
+        {
+          "label": "Yes",
+          "price": 0,
+          "bestBid": null,
+          "bestAsk": null
+        },
+        {
+          "label": "No",
+          "price": 1,
+          "bestBid": null,
+          "bestAsk": null
+        }
+      ],
+      "volume": 60420.386166,
+      "liquidity": null,
+      "active": true,
+      "closed": true
+    },
+    {
+      "slug": "elon-musk-of-tweets-april-14-april-21-40-59",
+      "question": "Will Elon Musk post 40-59 tweets from April 14 to April 21, 2026?",
+      "questionType": "count",
+      "kind": "absolute",
+      "strike": 40,
+      "strike2": 59,
+      "parser": "rules",
+      "confidence": 1,
+      "expiryDate": "2026-04-21T16:00:00Z",
+      "expiryTs": 1776787200000,
+      "hoursToExpiry": 7.356980555555555,
+      "outcomes": [
+        {
+          "label": "Yes",
+          "price": 0,
+          "bestBid": null,
+          "bestAsk": null
+        },
+        {
+          "label": "No",
+          "price": 1,
+          "bestBid": null,
+          "bestAsk": null
+        }
+      ],
+      "volume": 70450.296166,
+      "liquidity": null,
+      "active": true,
+      "closed": true
+    },
+    {
+      "slug": "elon-musk-of-tweets-april-14-april-21-60-79",
+      "question": "Will Elon Musk post 60-79 tweets from April 14 to April 21, 2026?",
+      "questionType": "count",
+      "kind": "absolute",
+      "strike": 60,
+      "strike2": 79,
+      "parser": "rules",
+      "confidence": 1,
+      "expiryDate": "2026-04-21T16:00:00Z",
+      "expiryTs": 1776787200000,
+      "hoursToExpiry": 7.356980555555555,
+      "outcomes": [
+        {
+          "label": "Yes",
+          "price": 0,
+          "bestBid": null,
+          "bestAsk": null
+        },
+        {
+          "label": "No",
+          "price": 1,
+          "bestBid": null,
+          "bestAsk": null
+        }
+      ],
+      "volume": 150173.18,
+      "liquidity": null,
+      "active": true,
+      "closed": true
+    },
+    {
+      "slug": "elon-musk-of-tweets-april-14-april-21-80-99",
+      "question": "Will Elon Musk post 80-99 tweets from April 14 to April 21, 2026?",
+      "questionType": "count",
+      "kind": "absolute",
+      "strike": 80,
+      "strike2": 99,
+      "parser": "rules",
+      "confidence": 1,
+      "expiryDate": "2026-04-21T16:00:00Z",
+      "expiryTs": 1776787200000,
+      "hoursToExpiry": 7.356980277777778,
+      "outcomes": [
+        {
+          "label": "Yes",
+          "price": 0,
+          "bestBid": null,
+          "bestAsk": null
+        },
+        {
+          "label": "No",
+          "price": 1,
+          "bestBid": null,
+          "bestAsk": null
+        }
+      ],
+      "volume": 215219.77981299988,
+      "liquidity": null,
+      "active": true,
+      "closed": true
+    },
+    {
+      "slug": "elon-musk-of-tweets-april-14-april-21-100-119",
+      "question": "Will Elon Musk post 100-119 tweets from April 14 to April 21, 2026?",
+      "questionType": "count",
+      "kind": "absolute",
+      "strike": 100,
+      "strike2": 119,
+      "parser": "rules",
+      "confidence": 1,
+      "expiryDate": "2026-04-21T16:00:00Z",
+      "expiryTs": 1776787200000,
+      "hoursToExpiry": 7.356980277777778,
+      "outcomes": [
+        {
+          "label": "Yes",
+          "price": 0,
+          "bestBid": null,
+          "bestAsk": null
+        },
+        {
+          "label": "No",
+          "price": 1,
+          "bestBid": null,
+          "bestAsk": null
+        }
+      ],
+      "volume": 210971.9048329999,
+      "liquidity": null,
+      "active": true,
+      "closed": true
+    },
+    {
+      "slug": "elon-musk-of-tweets-april-14-april-21-120-139",
+      "question": "Will Elon Musk post 120-139 tweets from April 14 to April 21, 2026?",
+      "questionType": "count",
+      "kind": "absolute",
+      "strike": 120,
+      "strike2": 139,
+      "parser": "rules",
+      "confidence": 1,
+      "expiryDate": "2026-04-21T16:00:00Z",
+      "expiryTs": 1776787200000,
+      "hoursToExpiry": 7.356980277777778,
+      "outcomes": [
+        {
+          "label": "Yes",
+          "price": 0,
+          "bestBid": null,
+          "bestAsk": null
+        },
+        {
+          "label": "No",
+          "price": 1,
+          "bestBid": null,
+          "bestAsk": null
+        }
+      ],
+      "volume": 238850.040647,
+      "liquidity": null,
+      "active": true,
+      "closed": true
+    },
+    {
+      "slug": "elon-musk-of-tweets-april-14-april-21-140-159",
+      "question": "Will Elon Musk post 140-159 tweets from April 14 to April 21, 2026?",
+      "questionType": "count",
+      "kind": "absolute",
+      "strike": 140,
+      "strike2": 159,
+      "parser": "rules",
+      "confidence": 1,
+      "expiryDate": "2026-04-21T16:00:00Z",
+      "expiryTs": 1776787200000,
+      "hoursToExpiry": 7.356980277777778,
+      "outcomes": [
+        {
+          "label": "Yes",
+          "price": 0,
+          "bestBid": null,
+          "bestAsk": null
+        },
+        {
+          "label": "No",
+          "price": 1,
+          "bestBid": null,
+          "bestAsk": null
+        }
+      ],
+      "volume": 351285.65525,
+      "liquidity": null,
+      "active": true,
+      "closed": true
+    },
+    {
+      "slug": "elon-musk-of-tweets-april-14-april-21-160-179",
+      "question": "Will Elon Musk post 160-179 tweets from April 14 to April 21, 2026?",
+      "questionType": "count",
+      "kind": "absolute",
+      "strike": 160,
+      "strike2": 179,
+      "parser": "rules",
+      "confidence": 1,
+      "expiryDate": "2026-04-21T16:00:00Z",
+      "expiryTs": 1776787200000,
+      "hoursToExpiry": 7.356980277777778,
+      "outcomes": [
+        {
+          "label": "Yes",
+          "price": 0,
+          "bestBid": null,
+          "bestAsk": null
+        },
+        {
+          "label": "No",
+          "price": 1,
+          "bestBid": null,
+          "bestAsk": null
+        }
+      ],
+      "volume": 511938.5901689997,
+      "liquidity": null,
+      "active": true,
+      "closed": true
+    },
+    {
+      "slug": "elon-musk-of-tweets-april-14-april-21-180-199",
+      "question": "Will Elon Musk post 180-199 tweets from April 14 to April 21, 2026?",
+      "questionType": "count",
+      "kind": "absolute",
+      "strike": 180,
+      "strike2": 199,
+      "parser": "rules",
+      "confidence": 1,
+      "expiryDate": "2026-04-21T16:00:00Z",
+      "expiryTs": 1776787200000,
+      "hoursToExpiry": 7.356980277777778,
+      "outcomes": [
+        {
+          "label": "Yes",
+          "price": 0,
+          "bestBid": null,
+          "bestAsk": null
+        },
+        {
+          "label": "No",
+          "price": 1,
+          "bestBid": null,
+          "bestAsk": null
+        }
+      ],
+      "volume": 878289.2535700001,
+      "liquidity": null,
+      "active": true,
+      "closed": true
+    },
+    {
+      "slug": "elon-musk-of-tweets-april-14-april-21-200-219",
+      "question": "Will Elon Musk post 200-219 tweets from April 14 to April 21, 2026?",
+      "questionType": "count",
+      "kind": "absolute",
+      "strike": 200,
+      "strike2": 219,
+      "parser": "rules",
+      "confidence": 1,
+      "expiryDate": "2026-04-21T16:00:00Z",
+      "expiryTs": 1776787200000,
+      "hoursToExpiry": 7.356980277777778,
+      "outcomes": [
+        {
+          "label": "Yes",
+          "price": 0.1485,
+          "bestBid": 0.213,
+          "bestAsk": 0.228
+        },
+        {
+          "label": "No",
+          "price": 0.8515,
+          "bestBid": 0.772,
+          "bestAsk": 0.787
+        }
+      ],
+      "volume": 893074.1937649995,
+      "liquidity": 34443.80185,
+      "active": true,
+      "closed": false
+    },
+    {
+      "slug": "elon-musk-of-tweets-april-14-april-21-220-239",
+      "question": "Will Elon Musk post 220-239 tweets from April 14 to April 21, 2026?",
+      "questionType": "count",
+      "kind": "absolute",
+      "strike": 220,
+      "strike2": 239,
+      "parser": "rules",
+      "confidence": 1,
+      "expiryDate": "2026-04-21T16:00:00Z",
+      "expiryTs": 1776787200000,
+      "hoursToExpiry": 7.356979722222222,
+      "outcomes": [
+        {
+          "label": "Yes",
+          "price": 0.72,
+          "bestBid": 0.71,
+          "bestAsk": 0.72
+        },
+        {
+          "label": "No",
+          "price": 0.28,
+          "bestBid": 0.28,
+          "bestAsk": 0.29
+        }
+      ],
+      "volume": 522905.86814199924,
+      "liquidity": 21144.3044,
+      "active": true,
+      "closed": false
+    },
+    {
+      "slug": "elon-musk-of-tweets-april-14-april-21-240-259",
+      "question": "Will Elon Musk post 240-259 tweets from April 14 to April 21, 2026?",
+      "questionType": "count",
+      "kind": "absolute",
+      "strike": 240,
+      "strike2": 259,
+      "parser": "rules",
+      "confidence": 1,
+      "expiryDate": "2026-04-21T16:00:00Z",
+      "expiryTs": 1776787200000,
+      "hoursToExpiry": 7.356979722222222,
+      "outcomes": [
+        {
+          "label": "Yes",
+          "price": 0.09,
+          "bestBid": 0.07,
+          "bestAsk": 0.08
+        },
+        {
+          "label": "No",
+          "price": 0.91,
+          "bestBid": 0.92,
+          "bestAsk": 0.93
+        }
+      ],
+      "volume": 522730.03284799977,
+      "liquidity": 23224.1904,
+      "active": true,
+      "closed": false
+    },
+    {
+      "slug": "elon-musk-of-tweets-april-14-april-21-260-279",
+      "question": "Will Elon Musk post 260-279 tweets from April 14 to April 21, 2026?",
+      "questionType": "count",
+      "kind": "absolute",
+      "strike": 260,
+      "strike2": 279,
+      "parser": "rules",
+      "confidence": 1,
+      "expiryDate": "2026-04-21T16:00:00Z",
+      "expiryTs": 1776787200000,
+      "hoursToExpiry": 7.356979722222222,
+      "outcomes": [
+        {
+          "label": "Yes",
+          "price": 0.008,
+          "bestBid": 0.007,
+          "bestAsk": 0.008
+        },
+        {
+          "label": "No",
+          "price": 0.992,
+          "bestBid": 0.992,
+          "bestAsk": 0.993
+        }
+      ],
+      "volume": 430019.33294800075,
+      "liquidity": 19690.34802,
+      "active": true,
+      "closed": false
+    },
+    {
+      "slug": "elon-musk-of-tweets-april-14-april-21-280-299",
+      "question": "Will Elon Musk post 280-299 tweets from April 14 to April 21, 2026?",
+      "questionType": "count",
+      "kind": "absolute",
+      "strike": 280,
+      "strike2": 299,
+      "parser": "rules",
+      "confidence": 1,
+      "expiryDate": "2026-04-21T16:00:00Z",
+      "expiryTs": 1776787200000,
+      "hoursToExpiry": 7.356979722222222,
+      "outcomes": [
+        {
+          "label": "Yes",
+          "price": 0.0015,
+          "bestBid": 0.001,
+          "bestAsk": 0.002
+        },
+        {
+          "label": "No",
+          "price": 0.9985,
+          "bestBid": 0.998,
+          "bestAsk": 0.999
+        }
+      ],
+      "volume": 469016.6196670001,
+      "liquidity": 40169.07827,
+      "active": true,
+      "closed": false
+    },
+    {
+      "slug": "elon-musk-of-tweets-april-14-april-21-300-319",
+      "question": "Will Elon Musk post 300-319 tweets from April 14 to April 21, 2026?",
+      "questionType": "count",
+      "kind": "absolute",
+      "strike": 300,
+      "strike2": 319,
+      "parser": "rules",
+      "confidence": 1,
+      "expiryDate": "2026-04-21T16:00:00Z",
+      "expiryTs": 1776787200000,
+      "hoursToExpiry": 7.356979722222222,
+      "outcomes": [
+        {
+          "label": "Yes",
+          "price": 0.0005,
+          "bestBid": null,
+          "bestAsk": 0.001
+        },
+        {
+          "label": "No",
+          "price": 0.9995,
+          "bestBid": 0.999,
+          "bestAsk": null
+        }
+      ],
+      "volume": 645726.1406559999,
+      "liquidity": 53092.12326,
+      "active": true,
+      "closed": false
+    },
+    {
+      "slug": "elon-musk-of-tweets-april-14-april-21-320-339",
+      "question": "Will Elon Musk post 320-339 tweets from April 14 to April 21, 2026?",
+      "questionType": "count",
+      "kind": "absolute",
+      "strike": 320,
+      "strike2": 339,
+      "parser": "rules",
+      "confidence": 1,
+      "expiryDate": "2026-04-21T16:00:00Z",
+      "expiryTs": 1776787200000,
+      "hoursToExpiry": 7.356979722222222,
+      "outcomes": [
+        {
+          "label": "Yes",
+          "price": 0.0005,
+          "bestBid": null,
+          "bestAsk": 0.001
+        },
+        {
+          "label": "No",
+          "price": 0.9995,
+          "bestBid": 0.999,
+          "bestAsk": null
+        }
+      ],
+      "volume": 528829.9269499994,
+      "liquidity": 71678.68372,
+      "active": true,
+      "closed": false
+    },
+    {
+      "slug": "elon-musk-of-tweets-april-14-april-21-340-359",
+      "question": "Will Elon Musk post 340-359 tweets from April 14 to April 21, 2026?",
+      "questionType": "count",
+      "kind": "absolute",
+      "strike": 340,
+      "strike2": 359,
+      "parser": "rules",
+      "confidence": 1,
+      "expiryDate": "2026-04-21T16:00:00Z",
+      "expiryTs": 1776787200000,
+      "hoursToExpiry": 7.356979722222222,
+      "outcomes": [
+        {
+          "label": "Yes",
+          "price": 0.0005,
+          "bestBid": null,
+          "bestAsk": 0.001
+        },
+        {
+          "label": "No",
+          "price": 0.9995,
+          "bestBid": 0.999,
+          "bestAsk": null
+        }
+      ],
+      "volume": 478127.5879040002,
+      "liquidity": 133514.28277,
+      "active": true,
+      "closed": false
+    },
+    {
+      "slug": "elon-musk-of-tweets-april-14-april-21-360-379",
+      "question": "Will Elon Musk post 360-379 tweets from April 14 to April 21, 2026?",
+      "questionType": "count",
+      "kind": "absolute",
+      "strike": 360,
+      "strike2": 379,
+      "parser": "rules",
+      "confidence": 1,
+      "expiryDate": "2026-04-21T16:00:00Z",
+      "expiryTs": 1776787200000,
+      "hoursToExpiry": 7.356979722222222,
+      "outcomes": [
+        {
+          "label": "Yes",
+          "price": 0.0005,
+          "bestBid": null,
+          "bestAsk": 0.001
+        },
+        {
+          "label": "No",
+          "price": 0.9995,
+          "bestBid": 0.999,
+          "bestAsk": null
+        }
+      ],
+      "volume": 349842.61229000025,
+      "liquidity": 113575.86006,
+      "active": true,
+      "closed": false
+    },
+    {
+      "slug": "elon-musk-of-tweets-april-14-april-21-380-399",
+      "question": "Will Elon Musk post 380-399 tweets from April 14 to April 21, 2026?",
+      "questionType": "count",
+      "kind": "absolute",
+      "strike": 380,
+      "strike2": 399,
+      "parser": "rules",
+      "confidence": 1,
+      "expiryDate": "2026-04-21T16:00:00Z",
+      "expiryTs": 1776787200000,
+      "hoursToExpiry": 7.356979722222222,
+      "outcomes": [
+        {
+          "label": "Yes",
+          "price": 0.0005,
+          "bestBid": null,
+          "bestAsk": 0.001
+        },
+        {
+          "label": "No",
+          "price": 0.9995,
+          "bestBid": 0.999,
+          "bestAsk": null
+        }
+      ],
+      "volume": 282617.53963000036,
+      "liquidity": 159270.23503,
+      "active": true,
+      "closed": false
+    },
+    {
+      "slug": "elon-musk-of-tweets-april-14-april-21-400-419",
+      "question": "Will Elon Musk post 400-419 tweets from April 14 to April 21, 2026?",
+      "questionType": "count",
+      "kind": "absolute",
+      "strike": 400,
+      "strike2": 419,
+      "parser": "rules",
+      "confidence": 1,
+      "expiryDate": "2026-04-21T16:00:00Z",
+      "expiryTs": 1776787200000,
+      "hoursToExpiry": 7.356979722222222,
+      "outcomes": [
+        {
+          "label": "Yes",
+          "price": 0.0005,
+          "bestBid": null,
+          "bestAsk": 0.001
+        },
+        {
+          "label": "No",
+          "price": 0.9995,
+          "bestBid": 0.999,
+          "bestAsk": null
+        }
+      ],
+      "volume": 298288.1330689999,
+      "liquidity": 181854.9334,
+      "active": true,
+      "closed": false
+    },
+    {
+      "slug": "elon-musk-of-tweets-april-14-april-21-420-439",
+      "question": "Will Elon Musk post 420-439 tweets from April 14 to April 21, 2026?",
+      "questionType": "count",
+      "kind": "absolute",
+      "strike": 420,
+      "strike2": 439,
+      "parser": "rules",
+      "confidence": 1,
+      "expiryDate": "2026-04-21T16:00:00Z",
+      "expiryTs": 1776787200000,
+      "hoursToExpiry": 7.356979722222222,
+      "outcomes": [
+        {
+          "label": "Yes",
+          "price": 0.0005,
+          "bestBid": null,
+          "bestAsk": 0.001
+        },
+        {
+          "label": "No",
+          "price": 0.9995,
+          "bestBid": 0.999,
+          "bestAsk": null
+        }
+      ],
+      "volume": 245300.9377119999,
+      "liquidity": 142347.05092,
+      "active": true,
+      "closed": false
+    },
+    {
+      "slug": "elon-musk-of-tweets-april-14-april-21-440-459",
+      "question": "Will Elon Musk post 440-459 tweets from April 14 to April 21, 2026?",
+      "questionType": "count",
+      "kind": "absolute",
+      "strike": 440,
+      "strike2": 459,
+      "parser": "rules",
+      "confidence": 1,
+      "expiryDate": "2026-04-21T16:00:00Z",
+      "expiryTs": 1776787200000,
+      "hoursToExpiry": 7.356979722222222,
+      "outcomes": [
+        {
+          "label": "Yes",
+          "price": 0.0005,
+          "bestBid": null,
+          "bestAsk": 0.001
+        },
+        {
+          "label": "No",
+          "price": 0.9995,
+          "bestBid": 0.999,
+          "bestAsk": null
+        }
+      ],
+      "volume": 225058.46594700014,
+      "liquidity": 166579.9001,
+      "active": true,
+      "closed": false
+    },
+    {
+      "slug": "elon-musk-of-tweets-april-14-april-21-460-479",
+      "question": "Will Elon Musk post 460-479 tweets from April 14 to April 21, 2026?",
+      "questionType": "count",
+      "kind": "absolute",
+      "strike": 460,
+      "strike2": 479,
+      "parser": "rules",
+      "confidence": 1,
+      "expiryDate": "2026-04-21T16:00:00Z",
+      "expiryTs": 1776787200000,
+      "hoursToExpiry": 7.356979722222222,
+      "outcomes": [
+        {
+          "label": "Yes",
+          "price": 0.0005,
+          "bestBid": null,
+          "bestAsk": 0.001
+        },
+        {
+          "label": "No",
+          "price": 0.9995,
+          "bestBid": 0.999,
+          "bestAsk": null
+        }
+      ],
+      "volume": 242428.33848600014,
+      "liquidity": 145300.63371,
+      "active": true,
+      "closed": false
+    },
+    {
+      "slug": "elon-musk-of-tweets-april-14-april-21-480-499",
+      "question": "Will Elon Musk post 480-499 tweets from April 14 to April 21, 2026?",
+      "questionType": "count",
+      "kind": "absolute",
+      "strike": 480,
+      "strike2": 499,
+      "parser": "rules",
+      "confidence": 1,
+      "expiryDate": "2026-04-21T16:00:00Z",
+      "expiryTs": 1776787200000,
+      "hoursToExpiry": 7.356979722222222,
+      "outcomes": [
+        {
+          "label": "Yes",
+          "price": 0.0005,
+          "bestBid": null,
+          "bestAsk": 0.001
+        },
+        {
+          "label": "No",
+          "price": 0.9995,
+          "bestBid": 0.999,
+          "bestAsk": null
+        }
+      ],
+      "volume": 184710.04980700006,
+      "liquidity": 163554.79835,
+      "active": true,
+      "closed": false
+    },
+    {
+      "slug": "elon-musk-of-tweets-april-14-april-21-500-519",
+      "question": "Will Elon Musk post 500-519 tweets from April 14 to April 21, 2026?",
+      "questionType": "count",
+      "kind": "absolute",
+      "strike": 500,
+      "strike2": 519,
+      "parser": "rules",
+      "confidence": 1,
+      "expiryDate": "2026-04-21T16:00:00Z",
+      "expiryTs": 1776787200000,
+      "hoursToExpiry": 7.356979722222222,
+      "outcomes": [
+        {
+          "label": "Yes",
+          "price": 0.0005,
+          "bestBid": null,
+          "bestAsk": 0.001
+        },
+        {
+          "label": "No",
+          "price": 0.9995,
+          "bestBid": 0.999,
+          "bestAsk": null
+        }
+      ],
+      "volume": 193789.634442,
+      "liquidity": 138246.11278,
+      "active": true,
+      "closed": false
+    },
+    {
+      "slug": "elon-musk-of-tweets-april-14-april-21-520-539",
+      "question": "Will Elon Musk post 520-539 tweets from April 14 to April 21, 2026?",
+      "questionType": "count",
+      "kind": "absolute",
+      "strike": 520,
+      "strike2": 539,
+      "parser": "rules",
+      "confidence": 1,
+      "expiryDate": "2026-04-21T16:00:00Z",
+      "expiryTs": 1776787200000,
+      "hoursToExpiry": 7.356979444444445,
+      "outcomes": [
+        {
+          "label": "Yes",
+          "price": 0.0005,
+          "bestBid": null,
+          "bestAsk": 0.001
+        },
+        {
+          "label": "No",
+          "price": 0.9995,
+          "bestBid": 0.999,
+          "bestAsk": null
+        }
+      ],
+      "volume": 186976.01399799986,
+      "liquidity": 146808.10522,
+      "active": true,
+      "closed": false
+    },
+    {
+      "slug": "elon-musk-of-tweets-april-14-april-21-540-559",
+      "question": "Will Elon Musk post 540-559 tweets from April 14 to April 21, 2026?",
+      "questionType": "count",
+      "kind": "absolute",
+      "strike": 540,
+      "strike2": 559,
+      "parser": "rules",
+      "confidence": 1,
+      "expiryDate": "2026-04-21T16:00:00Z",
+      "expiryTs": 1776787200000,
+      "hoursToExpiry": 7.356979444444445,
+      "outcomes": [
+        {
+          "label": "Yes",
+          "price": 0.0005,
+          "bestBid": null,
+          "bestAsk": 0.001
+        },
+        {
+          "label": "No",
+          "price": 0.9995,
+          "bestBid": 0.999,
+          "bestAsk": null
+        }
+      ],
+      "volume": 253833.675236,
+      "liquidity": 127237.08955,
+      "active": true,
+      "closed": false
+    },
+    {
+      "slug": "elon-musk-of-tweets-april-14-april-21-560-579",
+      "question": "Will Elon Musk post 560-579 tweets from April 14 to April 21, 2026?",
+      "questionType": "count",
+      "kind": "absolute",
+      "strike": 560,
+      "strike2": 579,
+      "parser": "rules",
+      "confidence": 1,
+      "expiryDate": "2026-04-21T16:00:00Z",
+      "expiryTs": 1776787200000,
+      "hoursToExpiry": 7.356979444444445,
+      "outcomes": [
+        {
+          "label": "Yes",
+          "price": 0.0005,
+          "bestBid": null,
+          "bestAsk": 0.001
+        },
+        {
+          "label": "No",
+          "price": 0.9995,
+          "bestBid": 0.999,
+          "bestAsk": null
+        }
+      ],
+      "volume": 203861.20999899996,
+      "liquidity": 109976.0573,
+      "active": true,
+      "closed": false
+    },
+    {
+      "slug": "elon-musk-of-tweets-april-14-april-21-580plus",
+      "question": "Will Elon Musk post 580+ tweets from April 14 to April 21, 2026?",
+      "questionType": "count",
+      "kind": "absolute",
+      "strike": 580,
+      "strike2": null,
+      "parser": "rules",
+      "confidence": 1,
+      "expiryDate": "2026-04-21T16:00:00Z",
+      "expiryTs": 1776787200000,
+      "hoursToExpiry": 7.356979444444445,
+      "outcomes": [
+        {
+          "label": "Yes",
+          "price": 0.0005,
+          "bestBid": null,
+          "bestAsk": 0.001
+        },
+        {
+          "label": "No",
+          "price": 0.9995,
+          "bestBid": 0.999,
+          "bestAsk": null
+        }
+      ],
+      "volume": 388591.43905499973,
+      "liquidity": 95923.2174,
+      "active": true,
+      "closed": false
+    }
+  ],
+  "news": {
+    "tweets": [
+      {
+        "author": "elonmusk",
+        "text": "RT @SpaceX: Falcon 9 vertical at pad 40 https://t.co/djQW8nJINH",
+        "createdAt": "2026-04-20T20:46:28.000Z"
+      },
+      {
+        "author": "elonmusk",
+        "text": "RT @XFreeze: Grok 4.3 beta’s front-end capabilities are totally insane\n\nI just put only this prompt: “design a website for kids toys”\n\nIt g…",
+        "createdAt": "2026-04-20T20:41:31.000Z"
+      },
+      {
+        "author": "elonmusk",
+        "text": "Worth double-checking charitable giving to make sure it actually helps the cause you care about https://t.co/Rbxh7yKyry",
+        "createdAt": "2026-04-20T20:38:41.000Z"
+      },
+      {
+        "author": "elonmusk",
+        "text": "Australians are becoming an endangered species https://t.co/r9gEaZPY25",
+        "createdAt": "2026-04-20T20:35:14.000Z"
+      },
+      {
+        "author": "elonmusk",
+        "text": "Imagine Beauty https://t.co/xjahmcU82M",
+        "createdAt": "2026-04-20T20:26:22.000Z"
+      },
+      {
+        "author": "elonmusk",
+        "text": "Try it out https://t.co/ssNTjhxERK",
+        "createdAt": "2026-04-20T19:43:46.000Z"
+      },
+      {
+        "author": "elonmusk",
+        "text": "RT @Timcast: I worked as a fund raiser for several top NGOs\n\nIts all fake\n\nLies, tricks, and legal loopholes to get money for nothing.\n\nWe…",
+        "createdAt": "2026-04-20T19:22:34.000Z"
+      },
+      {
+        "author": "elonmusk",
+        "text": "🎯 https://t.co/2LzQGRGjaR",
+        "createdAt": "2026-04-20T19:20:38.000Z"
+      },
+      {
+        "author": "elonmusk",
+        "text": "Imagine upgrades https://t.co/ZWswiSzqUQ",
+        "createdAt": "2026-04-20T14:28:37.000Z"
+      },
+      {
+        "author": "elonmusk",
+        "text": "RT @XFreeze: Grok Imagine just got a HUGE update\n\nYou can now create your own custom templates\n\nJust upload your image and you can do:\n→ Ph…",
+        "createdAt": "2026-04-20T14:28:10.000Z"
+      },
+      {
+        "author": "elonmusk",
+        "text": "RT @cb_doge: 🚀 GROK APP JUST HIT AN ALL-TIME HIGH! 📈\n\nTotal sessions hit their highest point ever nearing 300 million last month on the App…",
+        "createdAt": "2026-04-20T14:27:53.000Z"
+      },
+      {
+        "author": "elonmusk",
+        "text": "RT @benhabib6: The whole point about free speech is the right to insult. The second you insist social norms are observed, free speech dies.…",
+        "createdAt": "2026-04-20T14:27:34.000Z"
+      },
+      {
+        "author": "elonmusk",
+        "text": "RT @RestoreBritain_: https://t.co/V1NTM34jV0",
+        "createdAt": "2026-04-20T13:53:47.000Z"
+      },
+      {
+        "author": "elonmusk",
+        "text": "RT @tetsuoai: You can now create and share your own Grok Imagine templates with your followers.\n\nGive my “Nikita Boar” template a try, now…",
+        "createdAt": "2026-04-20T13:52:01.000Z"
+      },
+      {
+        "author": "elonmusk",
+        "text": "Grok Imagine https://t.co/o1vWJhMWJR",
+        "createdAt": "2026-04-20T13:51:52.000Z"
+      },
+      {
+        "author": "elonmusk",
+        "text": "RT @Rothmus: But we will never know what their true intentions are. https://t.co/K67PJ9ir1q",
+        "createdAt": "2026-04-20T13:38:32.000Z"
+      },
+      {
+        "author": "elonmusk",
+        "text": "A majority of CDLs were issued illegally in New York https://t.co/0wsuN5kc0Y",
+        "createdAt": "2026-04-20T13:14:45.000Z"
+      },
+      {
+        "author": "elonmusk",
+        "text": "RT @ns123abc: Grok 4.3 \"write an academic paper on general relativity\"\n\nIt produced a 5-page LaTeX paper:\n&gt;Einstein field equations\n&gt;Schwar…",
+        "createdAt": "2026-04-20T07:44:43.000Z"
+      },
+      {
+        "author": "elonmusk",
+        "text": "RT @Andercot: I have the sneaking suspicions we all actually have to work has hard as possible to prevent a very small group of people from…",
+        "createdAt": "2026-04-20T07:42:20.000Z"
+      },
+      {
+        "author": "elonmusk",
+        "text": "RT @Ne_pas_couvrir: Did you know that England once had a deeply rooted civilian gun culture, stretching from the 1500s into the early twent…",
+        "createdAt": "2026-04-20T07:40:17.000Z"
+      }
+    ],
+    "totalCount": 210,
+    "fetchedAt": "2026-04-21T08:38:31.856Z",
+    "accounts": [
+      "elonmusk"
+    ]
+  },
+  "timing": {
+    "nowTs": 1776760714874
+  },
+  "warnings": [
+    "CLOB: fetch failed (HTTP 404) for token 90274082479174008751686385249395772450093579231995635898581819209000182540084 (market: elon-musk-of-tweets-april-14-april-21-20-39)",
+    "CLOB: fetch failed (HTTP 404) for token 83359820038636732290093542536924765766545545461612647860880478081324451963496 (market: elon-musk-of-tweets-april-14-april-21-180-199)",
+    "CLOB: fetch failed (HTTP 404) for token 23283469667424245635549527491270040299487823380249073264502006365460571077932 (market: elon-musk-of-tweets-april-14-april-21-160-179)",
+    "CLOB: fetch failed (HTTP 404) for token 51025406522540664173137795063526330597956279435633030687030697114162557581620 (market: elon-musk-of-tweets-april-14-april-21-100-119)",
+    "CLOB: fetch failed (HTTP 404) for token 22736702580460790586255163895698965235033968520262325998259300155002451868471 (market: elon-musk-of-tweets-april-14-april-21-0-19)",
+    "CLOB: fetch failed (HTTP 404) for token 91633864463700837822965536698442699055713171025502628914034083925116890230176 (market: elon-musk-of-tweets-april-14-april-21-180-199)",
+    "CLOB: fetch failed (HTTP 404) for token 9574938659263566050067119934661722517626777367717633129364815119797645085050 (market: elon-musk-of-tweets-april-14-april-21-140-159)",
+    "CLOB: fetch failed (HTTP 404) for token 9507146786780388696836430944885387433224619204735881048073926402958549115424 (market: elon-musk-of-tweets-april-14-april-21-120-139)",
+    "CLOB: fetch failed (HTTP 404) for token 37538190297386280514620839647127389765263239469911748034724714439121178199927 (market: elon-musk-of-tweets-april-14-april-21-100-119)",
+    "CLOB: fetch failed (HTTP 404) for token 81713408498676007157732021733022883145969308727486523301942067441131423251780 (market: elon-musk-of-tweets-april-14-april-21-140-159)",
+    "CLOB: fetch failed (HTTP 404) for token 31624931317052678167018679213916980524490768647814132251131048869271646921919 (market: elon-musk-of-tweets-april-14-april-21-80-99)",
+    "CLOB: fetch failed (HTTP 404) for token 81911016959158107048686746759325742862986167963431055588633822707591845476330 (market: elon-musk-of-tweets-april-14-april-21-60-79)",
+    "CLOB: fetch failed (HTTP 404) for token 4443715541339458851483846829419983990286003775134089914848872793182564684566 (market: elon-musk-of-tweets-april-14-april-21-60-79)",
+    "CLOB: fetch failed (HTTP 404) for token 83334626399185370599091904001154423297024943376096196298830084904585545949271 (market: elon-musk-of-tweets-april-14-april-21-40-59)",
+    "CLOB: fetch failed (HTTP 404) for token 38646644476629479034843644272278686095233456944153849208272033711368195136202 (market: elon-musk-of-tweets-april-14-april-21-40-59)",
+    "CLOB: fetch failed (HTTP 404) for token 31034370894346101626917621679180507661741154068979404855674295908154170878347 (market: elon-musk-of-tweets-april-14-april-21-0-19)",
+    "CLOB: fetch failed (HTTP 404) for token 17198622000556883917708433891275394695978342520239679594249221942865946518304 (market: elon-musk-of-tweets-april-14-april-21-80-99)",
+    "CLOB: fetch failed (HTTP 404) for token 4160680652173790127022222571751771513151908753175284657171922550729405884965 (market: elon-musk-of-tweets-april-14-april-21-160-179)",
+    "CLOB: fetch failed (HTTP 404) for token 50808367447882296749637312652645503402233153547758612411319702296642568135311 (market: elon-musk-of-tweets-april-14-april-21-20-39)",
+    "CLOB: fetch failed (HTTP 404) for token 88876118044837142194085260633482966930109820193618027968485050304056095214225 (market: elon-musk-of-tweets-april-14-april-21-120-139)"
+  ]
+}

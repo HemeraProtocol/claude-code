@@ -88,7 +88,15 @@ const YES_LIKE = new Set(['yes', 'up', 'above', 'over', 'higher', '>'])
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-import type { QuestionType, VolWindow, SideInfo, BarrierDistanceInfo, BinaryEdgeInfo, PricingOpts, CountModel } from './types'
+import type {
+  QuestionType,
+  VolWindow,
+  SideInfo,
+  BarrierDistanceInfo,
+  BinaryEdgeInfo,
+  PricingOpts,
+  CountModel,
+} from './types'
 
 /** mulberry32 — deterministic seeded RNG for reproducible Monte Carlo. */
 function mulberry32(seed: number): () => number {
@@ -109,13 +117,17 @@ function resolveVolAndTime(
   callerName: string,
 ): { sigma: number; S: number; T: number } {
   if (!ctx.underlying) {
-    throw new Error(`${callerName}: requires ctx.underlying (not available for politics/non-crypto markets)`)
+    throw new Error(
+      `${callerName}: requires ctx.underlying (not available for politics/non-crypto markets)`,
+    )
   }
   if (!opts.sigmaOverride) {
     const window = opts.sigmaWindow ?? '1h'
     const warnings: string[] = ctx.underlying?.realizedVolWarnings ?? []
     if (warnings.some((w: string) => w.includes(`realizedVol[${window}]`))) {
-      throw new Error(`${callerName}: realized vol for window '${window}' unavailable; mark market as hold`)
+      throw new Error(
+        `${callerName}: realized vol for window '${window}' unavailable; mark market as hold`,
+      )
     }
   }
   const { underlying, timing } = ctx
@@ -127,7 +139,9 @@ function resolveVolAndTime(
   const S = underlying.price as number
   const expiryTs = ctx.market?.expiryTs ?? timing?.expiryTs
   if (typeof expiryTs !== 'number') {
-    throw new Error(`${callerName}: requires ctx.market.expiryTs or ctx.timing.expiryTs`)
+    throw new Error(
+      `${callerName}: requires ctx.market.expiryTs or ctx.timing.expiryTs`,
+    )
   }
   if (typeof timing?.nowTs !== 'number') {
     throw new Error(`${callerName}: requires ctx.timing.nowTs`)
@@ -152,7 +166,8 @@ function bsAbove(
   const { sigma, S, T } = resolveVolAndTime(ctx, opts, 'bsAbove')
   const K = ctx.market.strike as number
   if (T <= 0 || K <= 0 || S <= 0) return 0.5
-  const d2 = (Math.log(S / K) - 0.5 * sigma * sigma * T) / (sigma * Math.sqrt(T))
+  const d2 =
+    (Math.log(S / K) - 0.5 * sigma * sigma * T) / (sigma * Math.sqrt(T))
   return normCDF(d2)
 }
 
@@ -194,7 +209,9 @@ function timeToExpiryYears(ctx: Record<string, any>): number {
   const expiryTs = ctx.market?.expiryTs ?? ctx.timing?.expiryTs
   const nowTs = ctx.timing?.nowTs
   if (typeof expiryTs !== 'number' || typeof nowTs !== 'number') {
-    throw new Error('timeToExpiryYears: ctx.market.expiryTs/ctx.timing.expiryTs and ctx.timing.nowTs are required')
+    throw new Error(
+      'timeToExpiryYears: ctx.market.expiryTs/ctx.timing.expiryTs and ctx.timing.nowTs are required',
+    )
   }
   return (expiryTs - nowTs) / (365.25 * 24 * 3600 * 1000)
 }
@@ -229,7 +246,9 @@ function distanceToStrike(ctx: Record<string, any>): number {
   const S = ctx.underlying?.price
   const K = ctx.market?.strike
   if (typeof S !== 'number' || S <= 0 || typeof K !== 'number' || K <= 0) {
-    throw new Error('distanceToStrike: underlying.price and market.strike must both be positive numbers')
+    throw new Error(
+      'distanceToStrike: underlying.price and market.strike must both be positive numbers',
+    )
   }
   return (K - S) / S
 }
@@ -239,11 +258,16 @@ function distanceToRangeMid(ctx: Record<string, any>): number {
   const K1 = ctx.market?.strike
   const K2 = ctx.market?.strike2
   if (
-    typeof S !== 'number' || S <= 0 ||
-    typeof K1 !== 'number' || K1 <= 0 ||
-    typeof K2 !== 'number' || K2 <= 0
+    typeof S !== 'number' ||
+    S <= 0 ||
+    typeof K1 !== 'number' ||
+    K1 <= 0 ||
+    typeof K2 !== 'number' ||
+    K2 <= 0
   ) {
-    throw new Error('distanceToRangeMid: underlying.price, market.strike, and market.strike2 must all be positive numbers')
+    throw new Error(
+      'distanceToRangeMid: underlying.price, market.strike, and market.strike2 must all be positive numbers',
+    )
   }
   const mid = (K1 + K2) / 2
   return (mid - S) / S
@@ -254,11 +278,16 @@ function distanceToBarriers(ctx: Record<string, any>): BarrierDistanceInfo {
   const strikeA = ctx.market?.strike
   const strikeB = ctx.market?.strike2
   if (
-    typeof S !== 'number' || S <= 0 ||
-    typeof strikeA !== 'number' || strikeA <= 0 ||
-    typeof strikeB !== 'number' || strikeB <= 0
+    typeof S !== 'number' ||
+    S <= 0 ||
+    typeof strikeA !== 'number' ||
+    strikeA <= 0 ||
+    typeof strikeB !== 'number' ||
+    strikeB <= 0
   ) {
-    throw new Error('distanceToBarriers: underlying.price, market.strike, and market.strike2 must all be positive numbers')
+    throw new Error(
+      'distanceToBarriers: underlying.price, market.strike, and market.strike2 must all be positive numbers',
+    )
   }
 
   const lower = Math.min(strikeA, strikeB)
@@ -308,7 +337,10 @@ function outcomeSides(ctx: Record<string, any>): [SideInfo, SideInfo] {
   return sides
 }
 
-function binaryProbsFromYesProb(ctx: Record<string, any>, pYes: number): [number, number] {
+function binaryProbsFromYesProb(
+  ctx: Record<string, any>,
+  pYes: number,
+): [number, number] {
   const yes = yesSide(ctx)
   const noIndex: 0 | 1 = yes.index === 0 ? 1 : 0
   const probs: [number, number] = [0, 0]
@@ -334,10 +366,15 @@ function firstHitProbabilities(
   const side0Price = parseMoneyLabel(side0.label)
   const side1Price = parseMoneyLabel(side1.label)
 
-  const alignProbabilities = (lowerProb: number, upperProb: number): [number, number] => {
+  const alignProbabilities = (
+    lowerProb: number,
+    upperProb: number,
+  ): [number, number] => {
     if (side0Price !== null && side1Price !== null) {
-      const side0IsLower = Math.abs(side0Price - lower) <= Math.abs(side0Price - upper)
-      const side1IsLower = Math.abs(side1Price - lower) <= Math.abs(side1Price - upper)
+      const side0IsLower =
+        Math.abs(side0Price - lower) <= Math.abs(side0Price - upper)
+      const side1IsLower =
+        Math.abs(side1Price - lower) <= Math.abs(side1Price - upper)
       if (side0IsLower !== side1IsLower) {
         return side0IsLower ? [lowerProb, upperProb] : [upperProb, lowerProb]
       }
@@ -350,7 +387,10 @@ function firstHitProbabilities(
   if (T <= 0 || sigma <= 0) return alignProbabilities(0.5, 0.5)
 
   const paths = Math.max(500, Math.min(20_000, opts.simPaths ?? 4_000))
-  const steps = Math.max(24, Math.min(720, opts.simSteps ?? Math.ceil(Math.sqrt(T * 365.25) * 48)))
+  const steps = Math.max(
+    24,
+    Math.min(720, opts.simSteps ?? Math.ceil(Math.sqrt(T * 365.25) * 48)),
+  )
   const dt = T / steps
   const drift = -0.5 * sigma * sigma * dt
   const diffusion = sigma * Math.sqrt(dt)
@@ -360,7 +400,8 @@ function firstHitProbabilities(
   let noHit = 0
   let spareNormal: number | null = null
 
-  const rand = typeof opts.seed === 'number' ? mulberry32(opts.seed) : Math.random
+  const rand =
+    typeof opts.seed === 'number' ? mulberry32(opts.seed) : Math.random
 
   const nextNormal = (): number => {
     if (spareNormal !== null) {
@@ -417,10 +458,14 @@ function eventQuestionTypes(ctx: Record<string, any>): QuestionType[] {
  * - Mixed-type events → `null` (caller must dispatch per-market).
  * - All-unknown events → throws (data error, fetch failed to classify).
  */
-function eventPrimaryQuestionType(ctx: Record<string, any>): QuestionType | null {
-  const types = eventQuestionTypes(ctx).filter((type) => type !== 'unknown')
+function eventPrimaryQuestionType(
+  ctx: Record<string, any>,
+): QuestionType | null {
+  const types = eventQuestionTypes(ctx).filter(type => type !== 'unknown')
   if (types.length === 0) {
-    throw new Error('eventPrimaryQuestionType: no supported questionType found in ctx.markets')
+    throw new Error(
+      'eventPrimaryQuestionType: no supported questionType found in ctx.markets',
+    )
   }
   if (types.length !== 1) return null
   return types[0]!
@@ -484,8 +529,10 @@ function outcomeBids(ctx: Record<string, any>): [number, number] {
 function spreadByOutcome(ctx: Record<string, any>): [number, number] {
   const sides = outcomeSides(ctx)
   return [
-    (sides[0].bestAsk ?? sides[0].outcomePrice) - (sides[0].bestBid ?? sides[0].outcomePrice),
-    (sides[1].bestAsk ?? sides[1].outcomePrice) - (sides[1].bestBid ?? sides[1].outcomePrice),
+    (sides[0].bestAsk ?? sides[0].outcomePrice) -
+      (sides[0].bestBid ?? sides[0].outcomePrice),
+    (sides[1].bestAsk ?? sides[1].outcomePrice) -
+      (sides[1].bestBid ?? sides[1].outcomePrice),
   ]
 }
 
@@ -498,10 +545,7 @@ function spreadByOutcome(ctx: Record<string, any>): [number, number] {
 function noArbResidual(ctx: Record<string, any>): [number, number] {
   const bids = outcomeBids(ctx)
   const asks = outcomeAsks(ctx)
-  return [
-    bids[0] - (1 - asks[1]),
-    bids[1] - (1 - asks[0]),
-  ]
+  return [bids[0] - (1 - asks[1]), bids[1] - (1 - asks[0])]
 }
 
 /**
@@ -516,11 +560,18 @@ function edgeFromProbs(
   ctx: Record<string, any>,
 ): [BinaryEdgeInfo, BinaryEdgeInfo] {
   if (probabilities.length !== 2) {
-    throw new Error(`edgeFromProbs: expected 2 probabilities, got ${probabilities.length}`)
+    throw new Error(
+      `edgeFromProbs: expected 2 probabilities, got ${probabilities.length}`,
+    )
   }
   const p0 = probabilities[0]
   const p1 = probabilities[1]
-  if (typeof p0 !== 'number' || typeof p1 !== 'number' || !Number.isFinite(p0) || !Number.isFinite(p1)) {
+  if (
+    typeof p0 !== 'number' ||
+    typeof p1 !== 'number' ||
+    !Number.isFinite(p0) ||
+    !Number.isFinite(p1)
+  ) {
     throw new Error('edgeFromProbs: both probabilities must be finite numbers')
   }
   if (Math.abs(p0 + p1 - 1) > 1e-6) {
@@ -572,7 +623,9 @@ function countModel(opts: {
   const mu = observed + projectedAdditional
   const poissonSigma = Math.sqrt(projectedAdditional)
   const regimeNoise = mu * regimeUncertainty
-  const sigma = Math.sqrt(poissonSigma * poissonSigma + regimeNoise * regimeNoise)
+  const sigma = Math.sqrt(
+    poissonSigma * poissonSigma + regimeNoise * regimeNoise,
+  )
   return { mu, sigma, rate, elapsed, remaining }
 }
 
@@ -581,9 +634,13 @@ function countModel(opts: {
  * Applies continuity correction: lo - 0.5 and hi + 0.5.
  * If hi is null, computes P(X ≥ lo) (open-ended upper bound).
  */
-function countRangeProb(model: CountModel, lo: number, hi: number | null): number {
+function countRangeProb(
+  model: CountModel,
+  lo: number,
+  hi: number | null,
+): number {
   const { mu, sigma } = model
-  if (sigma <= 0) return (mu >= lo && (hi === null || mu <= hi)) ? 1 : 0
+  if (sigma <= 0) return mu >= lo && (hi === null || mu <= hi) ? 1 : 0
   const loAdj = lo - 0.5
   const hiAdj = hi === null ? Infinity : hi + 0.5
   const pLo = normCDF((loAdj - mu) / sigma)

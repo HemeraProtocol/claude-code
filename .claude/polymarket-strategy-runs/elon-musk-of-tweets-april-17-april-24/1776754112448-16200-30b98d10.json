@@ -1,0 +1,224 @@
+{
+  "schemaVersion": 2,
+  "timestamp": "2026-04-21T06:48:48.596Z",
+  "status": "success",
+  "ctxPath": "/tmp/polymarket-ctx-elon-musk-of-tweets-april-17-april-24-16200-30b98d10.json",
+  "ctxHash": "14637866754947396130",
+  "helpersModulePath": "/Users/linxuan/Desktop/claude_code_research/claude-code/.claude/skills/polymarket-strategy/helpers.ts",
+  "helpersHash": "6700910008166668887",
+  "gitCommit": "36256c9e74a8446401192d92ce3b7c1f8a08986b",
+  "code": "\nconst THRESHOLD = 0.04;\n\nconst windowStart = new Date(\"2026-04-17T16:00:00Z\").getTime();\nconst windowEnd   = new Date(\"2026-04-24T16:00:00Z\").getTime();\n\nconst model = ctx.helpers.countModel({\n  observed: ctx.news.totalCount,\n  windowStart,\n  windowEnd,\n  nowTs: ctx.timing.nowTs,\n});\n\nreturn ctx.markets.map((market) => {\n  try {\n    if (market.closed || market.hoursToExpiry < 0) {\n      return { question: market.question, decision: \"hold\", reason: \"closed or expired\" };\n    }\n    const mCtx = { market, timing: ctx.timing };\n\n    let pYes;\n    if (market.questionType === \"count\" && market.strike !== null) {\n      pYes = ctx.helpers.countRangeProb(model, market.strike, market.strike2);\n    } else {\n      pYes = 0.5;\n    }\n\n    const probs = ctx.helpers.binaryProbsFromYesProb(mCtx, pYes);\n    const edges = ctx.helpers.edgeFromProbs(probs, mCtx);\n    const best = edges[0].edge >= edges[1].edge ? edges[0] : edges[1];\n    if (best.edge < THRESHOLD) {\n      return { question: market.question, decision: \"hold\", edge: best.edge, pYes, marketPrice: market.outcomes.find(o=>o.label===\"Yes\")?.price };\n    }\n    return {\n      question: market.question,\n      decision: \"buy\",\n      side: best.label,\n      fairPrice: best.fairPrice,\n      marketPrice: best.marketPrice,\n      edge: best.edge,\n      pYes,\n    };\n  } catch (err) {\n    return { question: market.question, decision: \"hold\", reason: String(err) };\n  }\n});\n",
+  "durationMs": 0,
+  "result": [
+    {
+      "question": "Will Elon Musk post 80-99 tweets from April 17 to April 24, 2026?",
+      "decision": "hold",
+      "reason": "closed or expired"
+    },
+    {
+      "question": "Will Elon Musk post 100-119 tweets from April 17 to April 24, 2026?",
+      "decision": "hold",
+      "edge": 0.0004999999757394624,
+      "pYes": 2.4260482511806458e-11,
+      "marketPrice": 0.0005
+    },
+    {
+      "question": "Will Elon Musk post 120-139 tweets from April 17 to April 24, 2026?",
+      "decision": "hold",
+      "edge": 0.0004998608620139233,
+      "pYes": 1.3913798607712025e-7,
+      "marketPrice": 0.0005
+    },
+    {
+      "question": "Will Elon Musk post 140-159 tweets from April 17 to April 24, 2026?",
+      "decision": "hold",
+      "edge": 0.002892154547673109,
+      "pYes": 0.00010784545232689347,
+      "marketPrice": 0.0025
+    },
+    {
+      "question": "Will Elon Musk post 0-19 tweets from April 17 to April 24, 2026?",
+      "decision": "hold",
+      "reason": "closed or expired"
+    },
+    {
+      "question": "Will Elon Musk post 20-39 tweets from April 17 to April 24, 2026?",
+      "decision": "hold",
+      "reason": "closed or expired"
+    },
+    {
+      "question": "Will Elon Musk post 40-59 tweets from April 17 to April 24, 2026?",
+      "decision": "hold",
+      "reason": "closed or expired"
+    },
+    {
+      "question": "Will Elon Musk post 60-79 tweets from April 17 to April 24, 2026?",
+      "decision": "hold",
+      "reason": "closed or expired"
+    },
+    {
+      "question": "Will Elon Musk post 160-179 tweets from April 17 to April 24, 2026?",
+      "decision": "hold",
+      "edge": 0.00923990352993942,
+      "pYes": 0.0117600964700606,
+      "marketPrice": 0.0165
+    },
+    {
+      "question": "Will Elon Musk post 180-199 tweets from April 17 to April 24, 2026?",
+      "decision": "buy",
+      "side": "Yes",
+      "fairPrice": 0.19335538103305244,
+      "marketPrice": 0.101,
+      "edge": 0.09235538103305244,
+      "pYes": 0.19335538103305244
+    },
+    {
+      "question": "Will Elon Musk post 200-219 tweets from April 17 to April 24, 2026?",
+      "decision": "buy",
+      "side": "Yes",
+      "fairPrice": 0.5255512443512987,
+      "marketPrice": 0.197,
+      "edge": 0.32855124435129873,
+      "pYes": 0.5255512443512987
+    },
+    {
+      "question": "Will Elon Musk post 220-239 tweets from April 17 to April 24, 2026?",
+      "decision": "hold",
+      "edge": 0.0007904609683307973,
+      "pYes": 0.2492095390316692,
+      "marketPrice": 0.255
+    },
+    {
+      "question": "Will Elon Musk post 240-259 tweets from April 17 to April 24, 2026?",
+      "decision": "buy",
+      "side": "No",
+      "fairPrice": 0.9802242805949377,
+      "marketPrice": 0.81,
+      "edge": 0.17022428059493766,
+      "pYes": 0.019775719405062286
+    },
+    {
+      "question": "Will Elon Musk post 260-279 tweets from April 17 to April 24, 2026?",
+      "decision": "buy",
+      "side": "No",
+      "fairPrice": 0.9997603767624633,
+      "marketPrice": 0.88,
+      "edge": 0.11976037676246332,
+      "pYes": 0.00023962323753667913
+    },
+    {
+      "question": "Will Elon Musk post 280-299 tweets from April 17 to April 24, 2026?",
+      "decision": "buy",
+      "side": "No",
+      "fairPrice": 0.9999995882393087,
+      "marketPrice": 0.94,
+      "edge": 0.05999958823930873,
+      "pYes": 4.1176069132120574e-7
+    },
+    {
+      "question": "Will Elon Musk post 300-319 tweets from April 17 to April 24, 2026?",
+      "decision": "hold",
+      "edge": 0.02799999990394819,
+      "pYes": 9.605183315386512e-11,
+      "marketPrice": 0.0285
+    },
+    {
+      "question": "Will Elon Musk post 320-339 tweets from April 17 to April 24, 2026?",
+      "decision": "hold",
+      "edge": 0.015999999999997128,
+      "pYes": 2.886579864025407e-15,
+      "marketPrice": 0.0165
+    },
+    {
+      "question": "Will Elon Musk post 340-359 tweets from April 17 to April 24, 2026?",
+      "decision": "hold",
+      "edge": 0.009000000000000008,
+      "pYes": 0,
+      "marketPrice": 0.0095
+    },
+    {
+      "question": "Will Elon Musk post 360-379 tweets from April 17 to April 24, 2026?",
+      "decision": "hold",
+      "edge": 0.006000000000000005,
+      "pYes": 0,
+      "marketPrice": 0.0065
+    },
+    {
+      "question": "Will Elon Musk post 380-399 tweets from April 17 to April 24, 2026?",
+      "decision": "hold",
+      "edge": 0.0030000000000000027,
+      "pYes": 0,
+      "marketPrice": 0.0035
+    },
+    {
+      "question": "Will Elon Musk post 400-419 tweets from April 17 to April 24, 2026?",
+      "decision": "hold",
+      "edge": 0.0010000000000000009,
+      "pYes": 0,
+      "marketPrice": 0.0015
+    },
+    {
+      "question": "Will Elon Musk post 420-439 tweets from April 17 to April 24, 2026?",
+      "decision": "hold",
+      "edge": 0.0004999999999999449,
+      "pYes": 0,
+      "marketPrice": 0.0005
+    },
+    {
+      "question": "Will Elon Musk post 440-459 tweets from April 17 to April 24, 2026?",
+      "decision": "hold",
+      "edge": 0.0004999999999999449,
+      "pYes": 0,
+      "marketPrice": 0.0005
+    },
+    {
+      "question": "Will Elon Musk post 460-479 tweets from April 17 to April 24, 2026?",
+      "decision": "hold",
+      "edge": 0.0004999999999999449,
+      "pYes": 0,
+      "marketPrice": 0.0005
+    },
+    {
+      "question": "Will Elon Musk post 480-499 tweets from April 17 to April 24, 2026?",
+      "decision": "hold",
+      "edge": 0.0004999999999999449,
+      "pYes": 0,
+      "marketPrice": 0.0005
+    },
+    {
+      "question": "Will Elon Musk post 500-519 tweets from April 17 to April 24, 2026?",
+      "decision": "hold",
+      "edge": 0.0004999999999999449,
+      "pYes": 0,
+      "marketPrice": 0.0005
+    },
+    {
+      "question": "Will Elon Musk post 520-539 tweets from April 17 to April 24, 2026?",
+      "decision": "hold",
+      "edge": 0.0004999999999999449,
+      "pYes": 0,
+      "marketPrice": 0.0005
+    },
+    {
+      "question": "Will Elon Musk post 540-559 tweets from April 17 to April 24, 2026?",
+      "decision": "hold",
+      "edge": 0.0004999999999999449,
+      "pYes": 0,
+      "marketPrice": 0.0005
+    },
+    {
+      "question": "Will Elon Musk post 560-579 tweets from April 17 to April 24, 2026?",
+      "decision": "hold",
+      "edge": 0.0004999999999999449,
+      "pYes": 0,
+      "marketPrice": 0.0005
+    },
+    {
+      "question": "Will Elon Musk post 580+ tweets from April 17 to April 24, 2026?",
+      "decision": "hold",
+      "edge": 0.0004999999999999449,
+      "pYes": 0,
+      "marketPrice": 0.0005
+    }
+  ]
+}
